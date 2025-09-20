@@ -26,7 +26,6 @@ let localTracksAdded = false;
 let streamIdToPeerId = {};
 let presences = {};
 let youtubePlayer = null;
-let currentSharedElement = null; // New variable to track the currently shared element
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -53,7 +52,6 @@ function startPresentation(sharedVideoElement) {
   }
 
   mainStage.appendChild(sharedVideoElement);
-  currentSharedElement = sharedVideoElement; // Store the currently shared element
 }
 
 function stopPresentation() {
@@ -65,10 +63,7 @@ function stopPresentation() {
     videoPlayerWrapper.appendChild(filmstrip.firstChild);
   }
 
-  if (currentSharedElement && mainStage.contains(currentSharedElement)) {
-    mainStage.removeChild(currentSharedElement); // Explicitly remove the shared element
-  }
-  currentSharedElement = null; // Clear the reference
+  mainStage.innerHTML = '';
 }
 
 async function createPeerConnection() {
@@ -346,13 +341,6 @@ export const Room = {
 
     await createPeerConnection();
     await setupLocalMedia();
-
-    // Add local tracks to peer connection immediately after setup
-    if (localStream) {
-      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-      console.log('Local tracks added to peer connection initially.');
-    }
-
     joinChannel(roomId, name);
 
     loadYoutubeAPI();
@@ -528,6 +516,10 @@ function handleChatVisibility() {
 }
 
     // Share Video Logic
+    const youtubeUrlInput = document.getElementById('youtube-url-input');
+    const shareVideoButton = document.getElementById('share-youtube-video');
+    const stopSharingButton = document.getElementById('stop-sharing-button');
+
     shareVideoButton.addEventListener('click', () => {
       const url = youtubeUrlInput.value;
       const youtubeVideoId = extractYoutubeVideoId(url);
