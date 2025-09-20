@@ -1,0 +1,41 @@
+
+<div class="flex flex-col items-center justify-center h-full">
+  <div class="w-full max-w-sm">
+    <form id="join-form" class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+      <div class="mb-4">
+        <label class="block text-gray-700 text-sm font-bold mb-2" for="room-id">
+          Room Name
+        </label>
+        <input value={@conn.query_params["room_id"]} class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="room-id" type="text" placeholder="e.g. my-cool-room" required>
+      </div>
+      <div class="mb-6">
+        <label class="block text-gray-700 text-sm font-bold mb-2" for="name">
+          Your Name
+        </label>
+        <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="name" type="text" placeholder="e.g. John Doe" required>
+      </div>
+      <div class="flex items-center justify-between">
+        <button class="bg-brand hover:bg-brand/80 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="submit">
+          Join
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.getElementById('join-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+    const roomId = document.getElementById('room-id').value;
+    const name = document.getElementById('name').value;
+    if (roomId && name) {
+      window.location.href = "/" + encodeURIComponent(roomId) + "?name=" + encodeURIComponent(name);
+    }
+  });
+
+  // On page load, if the room is pre-filled, focus the name input
+  const roomInput = document.getElementById('room-id');
+  if (roomInput.value) {
+    document.getElementById('name').focus();
+  }
+</script>
