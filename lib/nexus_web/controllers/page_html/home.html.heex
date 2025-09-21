@@ -33,9 +33,10 @@
     }
   });
 
-  // On page load, if the room is pre-filled, focus the name input
+  // On page load, if the room is pre-filled, disable it and focus the name input
   const roomInput = document.getElementById('room-id');
   if (roomInput.value) {
+    roomInput.disabled = true;
     document.getElementById('name').focus();
   }
 </script>

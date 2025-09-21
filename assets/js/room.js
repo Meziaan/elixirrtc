@@ -316,6 +316,8 @@ async function joinChannel(roomId, name) {
     });
 }
 
+
+
 function updateVideoGrid() {
   const videoCount = videoPlayerWrapper.children.length;
 
@@ -334,6 +336,10 @@ function updateVideoGrid() {
 }
 
 export const Room = {
+  isScreenSharing: false,
+  screenShareStream: null,
+  originalVideoTrack: null,
+
   async mounted() {
     const roomId = this.el.dataset.roomId;
     const name = this.el.dataset.name;
@@ -536,7 +542,72 @@ function handleChatVisibility() {
     });
 
     stopSharingButton.addEventListener('click', () => {
-      channel.push('stop_video_share', {});
+      if (this.isScreenSharing) {
+        this.stopScreenShare();
+      } else {
+        channel.push('stop_video_share', {});
+      }
     });
+
+    document.getElementById('toggle-screen-share').addEventListener('click', () => this.startScreenShare());
   },
+
+  async startScreenShare() {
+    if (this.isScreenSharing) return;
+
+    try {
+      this.screenShareStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch (err) {
+      console.error("Error starting screen share:", err);
+      return;
+    }
+
+    const screenTrack = this.screenShareStream.getVideoTracks()[0];
+    const videoSender = pc.getSenders().find(s => s.track.kind === 'video');
+
+    if (!videoSender) {
+      console.error("Could not find video sender");
+      return;
+    }
+
+    this.originalVideoTrack = videoSender.track;
+    videoSender.replaceTrack(screenTrack);
+    this.isScreenSharing = true;
+
+    const screenVideoElement = document.createElement('video');
+    screenVideoElement.srcObject = this.screenShareStream;
+    screenVideoElement.autoplay = true;
+    screenVideoElement.playsInline = true;
+    screenVideoElement.className = 'w-full h-full object-contain';
+    startPresentation(screenVideoElement);
+
+    document.getElementById('open-youtube-modal').classList.add('hidden');
+    document.getElementById('toggle-screen-share').classList.add('hidden');
+    document.getElementById('stop-sharing-button').classList.remove('hidden');
+
+    screenTrack.onended = () => {
+      this.stopScreenShare();
+    };
+  },
+
+  stopScreenShare() {
+    if (!this.isScreenSharing) return;
+
+    const videoSender = pc.getSenders().find(s => s.track.kind === 'video');
+    if (videoSender) {
+      videoSender.replaceTrack(this.originalVideoTrack);
+    }
+
+    this.screenShareStream.getTracks().forEach(track => track.stop());
+
+    this.isScreenSharing = false;
+    this.screenShareStream = null;
+    this.originalVideoTrack = null;
+
+    stopPresentation();
+
+    document.getElementById('open-youtube-modal').classList.remove('hidden');
+    document.getElementById('toggle-screen-share').classList.remove('hidden');
+    document.getElementById('stop-sharing-button').classList.add('hidden');
+  }
 };
