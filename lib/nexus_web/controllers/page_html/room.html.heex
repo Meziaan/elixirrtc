@@ -1,0 +1,19 @@
+<div id="room" phx-hook="Room" data-room-id={@room_id} data-name={@name} class="h-full flex flex-col justify-center items-center gap-4 p-4">
+  <div id="videoplayer-wrapper" class="w-full h-full grid gap-2 p-2 auto-rows-fr grid-cols-1 flex-grow">
+    <video id="videoplayer-local" class="rounded-xl w-full h-full object-cover" autoplay muted>
+    </video>
+  </div>
+  <div id="controls" class="flex gap-4">
+    <button id="toggle-audio" class="bg-blue-500 hover:bg-blue-700 text-white font-bold p-3 rounded-full">
+      <.icon id="audio-on-icon" name="hero-microphone-solid" class="h-6 w-6" />
+      <.icon id="audio-off-icon" name="hero-microphone-slash-solid" class="h-6 w-6 hidden" />
+    </button>
+    <button id="toggle-video" class="bg-blue-500 hover:bg-blue-700 text-white font-bold p-3 rounded-full">
+      <.icon id="video-on-icon" name="hero-video-camera-solid" class="h-6 w-6" />
+      <.icon id="video-off-icon" name="hero-video-camera-slash-solid" class="h-6 w-6 hidden" />
+    </button>
+    <button id="leave-room" class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full">
+      <.icon name="hero-phone-x-mark-solid" class="h-6 w-6" />
+    </button>
+  </div>
+</div>
