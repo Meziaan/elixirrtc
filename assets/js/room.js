@@ -482,7 +482,7 @@ export const Room = {
   
       const messageTimestamp = document.createElement('span');
       messageTimestamp.className = 'ml-2 text-xs text-gray-500';
-      messageTimestamp.innerText = new Date(payload.timestamp).toLocaleTimeString();
+      messageTimestamp.innerText = new Date(payload.timestamp + 'Z').toLocaleTimeString('en-GB', { timeZone: 'Europe/London' });
   
       messageHeader.appendChild(senderName);
       messageHeader.appendChild(messageTimestamp);
