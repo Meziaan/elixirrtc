@@ -35,20 +35,26 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
-  def join("peer:" <> room_id, %{"name" => name}, socket) do
+  def join("peer:" <> room_id, %{"name" => name, "token" => token}, socket) do
     pid = self()
 
-    case Rooms.add_peer(room_id, pid) do
-      {:ok, id, shared_video} -> 
-        send(self(), {:after_join, shared_video})
-        socket = 
-          socket
-          |> assign(:peer, id)
-          |> assign(:name, name)
-          |> assign(:room_id, room_id)
+    case Nexus.validate_room_token(token) do
+      {:ok, ^room_id} ->
+        case Rooms.add_peer(room_id, pid) do
+          {:ok, id, shared_video} -> 
+            send(self(), {:after_join, shared_video})
+            socket = 
+              socket
+              |> assign(:peer, id)
+              |> assign(:name, name)
+              |> assign(:room_id, room_id)
 
-        {:ok, socket}
-      {:error, _reason} = error -> error
+            {:ok, socket}
+          {:error, _reason} = error -> error
+        end
+      _ ->
+        Logger.warning("Unauthorized join attempt to room #{room_id} with invalid token.")
+        {:error, :unauthorized}
     end
   end
 
@@ -72,36 +78,69 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
-  def handle_in("share_youtube_video", %{"video_id" => video_id}, socket) do
+  def handle_in("share_youtube_video", %{"video_id" => video_id}, socket) when is_binary(video_id) and byte_size(video_id) > 0 and byte_size(video_id) <= 20 do
     Logger.info("Shared YouTube video: #{video_id} by #{socket.assigns.name}")
     Rooms.set_shared_video(socket.assigns.room_id, %{type: :youtube, id: video_id, sender: socket.assigns.name})
     broadcast!(socket, "youtube_video_shared", %{video_id: video_id, sender: socket.assigns.name})
     {:noreply, socket}
   end
 
+  def handle_in("share_youtube_video", _payload, socket) do
+    Logger.warning("Invalid YouTube video share attempt from #{socket.assigns.name}")
+    {:noreply, socket}
+  end
+
   @impl true
-  def handle_in("share_direct_video", %{"url" => url}, socket) do
-    Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
-    Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: url, sender: socket.assigns.name})
-    broadcast!(socket, "new_direct_video", %{url: url, sender: socket.assigns.name})
+  def handle_in("share_direct_video", %{"url" => url}, socket) when is_binary(url) do
+    if String.starts_with?(url, "http://") or String.starts_with?(url, "https://") do
+      Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
+      Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: url, sender: socket.assigns.name})
+      broadcast!(socket, "new_direct_video", %{url: url, sender: socket.assigns.name})
+    else
+      Logger.warning("Invalid direct video share attempt (URL format) from #{socket.assigns.name}")
+    end
+    {:noreply, socket}
+  end
+
+  def handle_in("share_direct_video", _payload, socket) do
+    Logger.warning("Invalid direct video share attempt (payload format) from #{socket.assigns.name}")
     {:noreply, socket}
   end
 
   @impl true
   def handle_in("stop_video_share", _, socket) do
-    Rooms.clear_shared_video(socket.assigns.room_id)
+    case Rooms.clear_shared_video(socket.assigns.room_id, socket.assigns.name) do
+      {:ok, true} -> broadcast!(socket, "video_share_stopped", %{})
+      _ -> :ok
+    end
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("start_screen_share", _, socket) do
+    broadcast!(socket, "screen_share_started", %{peer_id: socket.assigns.peer, name: socket.assigns.name})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("stop_screen_share", _, socket) do
     broadcast!(socket, "video_share_stopped", %{})
     {:noreply, socket}
   end
 
   @impl true
-  def handle_in("new_message", %{"body" => body}, socket) do
+  def handle_in("new_message", %{"body" => body}, socket) when is_binary(body) and byte_size(body) > 0 and byte_size(body) <= 500 do
     broadcast!(socket, "new_message", %{
       name: socket.assigns.name,
       body: body,
       timestamp: NaiveDateTime.utc_now() |> to_string()
     })
 
+    {:noreply, socket}
+  end
+
+  def handle_in("new_message", _payload, socket) do
+    Logger.warning("Invalid chat message attempt from #{socket.assigns.name}")
     {:noreply, socket}
   end
 

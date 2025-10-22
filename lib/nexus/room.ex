@@ -40,7 +40,7 @@ defmodule Nexus.Room do
   @impl true
   def handle_call({:add_peer, channel_pid}, _from, state) do
     id = generate_id()
-    Logger.info("New peer #{id} added to room #{state.room_id}")
+    Logger.info("Adding new peer to room", room_id: state.room_id, peer_id: id)
     peer_ids = Map.keys(state.peers)
 
     {:ok, pid} = PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids)
@@ -61,7 +61,7 @@ defmodule Nexus.Room do
   @impl true
   def handle_call({:mark_ready, id}, _from, state)
       when is_map_key(state.pending_peers, id) do
-    Logger.info("Peer #{id} ready")
+    Logger.info("Peer marked as ready", room_id: state.room_id, peer_id: id)
     broadcast({:peer_added, id}, state)
 
     {peer_data, state} = pop_in(state, [:pending_peers, id])
@@ -83,15 +83,21 @@ defmodule Nexus.Room do
   end
 
   @impl true
-  def handle_call(:clear_shared_video, _from, state) do
-    {:reply, :ok, %{state | shared_video: nil}}
+  def handle_call({:clear_shared_video, name}, _from, state) do
+    if state.shared_video && state.shared_video.sender == name do
+      {:reply, true, %{state | shared_video: nil}}
+    else
+      {:reply, false, state}
+    end
   end
 
   @impl true
   def handle_info({:peer_ready_timeout, peer}, state) do
     if is_map_key(state.pending_peers, peer) do
       Logger.warning(
-        "Removing peer #{peer} which failed to mark itself as ready for #{@peer_ready_timeout_s} s"
+        "Removing peer which failed to mark itself as ready for #{@peer_ready_timeout_s} s",
+        room_id: state.room_id,
+        peer_id: peer
       )
 
       :ok = PeerSupervisor.terminate_peer(peer)
@@ -103,7 +109,7 @@ defmodule Nexus.Room do
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
     {id, state} = pop_in(state, [:peer_pid_to_id, pid])
-    Logger.info("Peer #{id} down with reason #{inspect(reason)}")
+    Logger.warning("Peer down", room_id: state.room_id, peer_id: id, reason: reason)
 
     state =
       cond do

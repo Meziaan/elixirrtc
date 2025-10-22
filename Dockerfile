@@ -68,7 +68,7 @@ RUN mix release
 FROM ${RUNNER_IMAGE}
 
 RUN apt-get update -y && \
-  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates \
+  apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates tini curl \
   && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
 # Set the locale
@@ -92,6 +92,9 @@ USER nobody
 # If using an environment that doesn't automatically reap zombie processes, it is
 # advised to add an init process such as tini via `apt-get install`
 # above and adding an entrypoint. See https://github.com/krallin/tini for details
-# ENTRYPOINT ["/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl -f http://localhost:4000/health || exit 1
 
 CMD ["/app/bin/server"]

@@ -3,8 +3,6 @@ defmodule Nexus.Rooms do
   Public API for interacting with Rooms.
   """
 
-  alias Nexus.Room
-
   def add_peer(room_id, channel_pid) do
     with {:ok, room_pid} <- find_or_start_room(room_id) do
       GenServer.call(room_pid, {:add_peer, channel_pid})
@@ -23,9 +21,9 @@ defmodule Nexus.Rooms do
     end
   end
 
-  def clear_shared_video(room_id) do
+  def clear_shared_video(room_id, name) do
     with {:ok, room_pid} <- find_or_start_room(room_id) do
-      GenServer.call(room_pid, :clear_shared_video)
+      GenServer.call(room_pid, {:clear_shared_video, name})
     end
   end
 

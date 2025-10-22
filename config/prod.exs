@@ -10,5 +10,8 @@ config :nexus, NexusWeb.Endpoint, cache_static_manifest: "priv/static/cache_mani
 # Do not print debug messages in production
 config :logger, level: :info
 
+# Force SSL for security and WebRTC compatibility
+config :nexus, NexusWeb.Endpoint, force_ssl: [hsts: true]
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

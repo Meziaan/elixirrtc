@@ -6,7 +6,8 @@ defmodule NexusWeb.PageController do
   end
 
   def room(conn, %{"room_id" => room_id, "name" => name}) do
-    render(conn, :room, room_id: room_id, name: name, page_title: "Room")
+    room_token = Nexus.generate_room_token(room_id)
+    render(conn, :room, room_id: room_id, name: name, room_token: room_token, page_title: "Room")
   end
 
   def room(conn, %{"room_id" => room_id}) do

@@ -75,6 +75,38 @@ if config_env() == :prod do
     admin_username: admin_username,
     admin_password: admin_password
 
+  # ICE servers configuration for WebRTC
+  # We read the TURN server details from environment variables.
+  # In your production environment, you should set:
+  # - TURN_URLS (e.g., "turn:my-turn-server.com:3478")
+  # - TURN_USERNAME
+  # - TURN_CREDENTIAL (the password)
+  turn_urls = System.get_env("TURN_URLS")
+  turn_username = System.get_env("TURN_USERNAME")
+  turn_credential = System.get_env("TURN_CREDENTIAL")
+
+  # Start with a default list of public STUN servers.
+  ice_servers = [
+    %{urls: "stun:stun.l.google.com:19302"},
+    %{urls: "stun:stun1.l.google.com:19302"},
+    %{urls: "stun:stun2.l.google.com:19302"}
+  ]
+
+  # If a TURN server is configured via environment variables, add it to the list.
+  ice_servers = 
+    if turn_urls do
+      turn_config = %{
+        urls: turn_urls,
+        username: turn_username,
+        credential: turn_credential
+      }
+      [turn_config | ice_servers]
+    else
+      ice_servers
+    end
+
+  config :nexus, :ice_servers, ice_servers
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

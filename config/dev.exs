@@ -66,3 +66,10 @@ config :phoenix_live_view,
   debug_heex_annotations: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Default ICE servers for development
+config :nexus, :ice_servers, [
+  %{urls: "stun:stun.l.google.com:19302"},
+  %{urls: "stun:stun1.l.google.com:19302"},
+  %{urls: "stun:stun2.l.google.com:19302"}
+]

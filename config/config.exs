@@ -54,7 +54,9 @@ config :phoenix, :json_library, Jason
 
 config :nexus,
   admin_username: "admin",
-  admin_password: "admin"
+  admin_password: "admin",
+  ice_servers: [%{urls: "stun:stun.l.google.com:19302"}],
+  ice_port_range: [40000, 49999]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

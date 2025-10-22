@@ -67,7 +67,7 @@ defmodule Nexus.Peer do
   ]
 
   @opts [
-    ice_servers: [%{urls: "stun:stun.l.google.com:19302"}],
+    ice_servers: Application.fetch_env!(:nexus, :ice_servers),
     audio_codecs: @audio_codecs,
     video_codecs: @video_codecs
   ]
@@ -148,7 +148,7 @@ defmodule Nexus.Peer do
   @impl true
   def handle_call({:apply_sdp_answer, answer_sdp}, _from, %{pc: pc} = state) do
     answer = %SessionDescription{type: :answer, sdp: answer_sdp}
-    Logger.debug("Applying SDP answer for #{state.id}:\n#{answer.sdp}")
+    Logger.debug("Applying SDP answer", peer_id: state.id, room_id: state.room_id)
 
     state =
       case PeerConnection.set_remote_description(pc, answer) do
@@ -158,7 +158,11 @@ defmodule Nexus.Peer do
           |> handle_pending_peers()
 
         {:error, reason} ->
-          Logger.warning("Unable to apply SDP answer for #{state.id}: #{inspect(reason)}")
+          Logger.error("Unable to apply SDP answer", 
+            peer_id: state.id, 
+            room_id: state.room_id, 
+            reason: reason
+          )
           state
       end
 
@@ -242,15 +246,17 @@ defmodule Nexus.Peer do
 
   @impl true
   def handle_info({:ex_webrtc, pc, {:connection_state_change, :connected}}, %{pc: pc} = state) do
-    Logger.debug("Peer #{state.id} connected")
+    Logger.debug("Peer connected", peer_id: state.id, room_id: state.room_id)
     :ok = Rooms.mark_ready(state.room_id, state.id)
+    Nexus.Database.log("peer_connected", %{peer_id: state.id, room_id: state.room_id})
 
     {:noreply, state}
   end
 
   @impl true
   def handle_info({:ex_webrtc, pc, {:connection_state_change, :failed}}, %{pc: pc} = state) do
-    Logger.warning("Stopping peer #{state.id} because ICE connection changed state to `failed`")
+    Logger.error("Peer connection failed", peer_id: state.id, room_id: state.room_id)
+    Nexus.Database.log("peer_connection_failed", %{peer_id: state.id, room_id: state.room_id})
     {:stop, {:shutdown, :ice_connection_failed}, state}
   end
 
@@ -282,7 +288,12 @@ defmodule Nexus.Peer do
 
   @impl true
   def handle_info({:ex_webrtc, pc, {:track, track}}, %{pc: pc} = state) do
-    Logger.debug("Peer #{state.id} added remote #{track.kind} track #{track.id}")
+    Logger.debug("Received remote track", 
+      peer_id: state.id, 
+      room_id: state.room_id, 
+      track_id: track.id, 
+      kind: track.kind
+    )
 
     state = put_in(state.inbound_tracks[track.kind], track.id)
 

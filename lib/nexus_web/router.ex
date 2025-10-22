@@ -12,6 +12,10 @@ defmodule NexusWeb.Router do
     plug :put_secure_browser_headers
   end
 
+  pipeline :api do
+    plug :accepts, ["json"]
+  end
+
   pipeline :auth do
     plug :admin_auth
   end
@@ -21,6 +25,16 @@ defmodule NexusWeb.Router do
 
     get "/", PageController, :home
     get "/:room_id", PageController, :room
+  end
+
+  scope "/", NexusWeb do
+    get "/health", HealthController, :index
+  end
+
+  scope "/api", NexusWeb do
+    pipe_through :api
+
+    get "/ice_servers", IceServersController, :index
   end
 
   scope "/admin", NexusWeb do

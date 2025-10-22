@@ -1,23 +1,15 @@
 import { Socket, Presence } from 'phoenix';
 
-const pcConfig = { iceServers: [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  { urls: 'stun:stun.nextcloud.com:3478' },
-  { urls: 'stun:stun.voipbuster.com' },
-  { urls: 'stun:stun.voipstunt.com' },
-  { urls: 'stun:stun.counterpath.com' },
-  { urls: 'stun:stun.services.mozilla.com' }
-] };
 const localVideoPlayer = document.getElementById('videoplayer-local');
 const videoPlayerWrapper = document.getElementById('videoplayer-wrapper');
 const peerCount = document.getElementById('viewercount');
 const presentationLayout = document.getElementById('presentation-layout');
 const mainStage = document.getElementById('main-stage');
 const filmstrip = document.getElementById('filmstrip');
+
+if (!localVideoPlayer || !videoPlayerWrapper || !peerCount || !presentationLayout || !mainStage || !filmstrip) {
+  throw new Error('Critical UI elements are missing from the DOM. Aborting script.');
+}
 
 let localStream = undefined;
 let channel = undefined;
@@ -26,6 +18,34 @@ let localTracksAdded = false;
 let streamIdToPeerId = {};
 let presences = {};
 let youtubePlayer = null;
+let screenSharerId = null;
+
+const AppState = {
+  isChatOpen: false,
+  unreadMessages: 0,
+  presentationMode: 'none',
+  activeSharer: { name: null, id: null },
+  get isPresenting() {
+    return this.presentationMode !== 'none';
+  },
+};
+
+// New function to display error messages
+function displayErrorMessage(message) {
+  const errorNode = document.getElementById('global-error-message');
+  if (errorNode) {
+    errorNode.innerText = message;
+    errorNode.classList.remove('hidden'); // Assuming 'hidden' class hides it
+    // Optionally, hide after a few seconds
+    setTimeout(() => {
+      errorNode.classList.add('hidden');
+    }, 5000);
+  } else {
+    console.error('UI Error:', message);
+    // Fallback to alert if no dedicated error element is found
+    alert(message);
+  }
+}
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -42,32 +62,19 @@ function extractYoutubeVideoId(url) {
   return (match && match[1]) ? match[1] : null;
 }
 
-function startPresentation(sharedVideoElement) {
-  presentationLayout.classList.remove('hidden');
-  videoPlayerWrapper.classList.add('hidden');
-
-  // Move all video elements to the filmstrip
-  while (videoPlayerWrapper.firstChild) {
-    filmstrip.appendChild(videoPlayerWrapper.firstChild);
-  }
-
-  mainStage.appendChild(sharedVideoElement);
-}
-
-function stopPresentation() {
-  presentationLayout.classList.add('hidden');
-  videoPlayerWrapper.classList.remove('hidden');
-
-  // Move all video elements back to the grid
-  while (filmstrip.firstChild) {
-    videoPlayerWrapper.appendChild(filmstrip.firstChild);
-  }
-
-  mainStage.innerHTML = '';
-}
-
 async function createPeerConnection() {
-  pc = new RTCPeerConnection(pcConfig);
+  try {
+    const resp = await fetch('/api/ice_servers');
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch ICE servers: ${resp.status}`);
+    }
+    const config = await resp.json();
+    pc = new RTCPeerConnection(config);
+  } catch (error) {
+    console.error("Error creating peer connection:", error);
+    displayErrorMessage("Could not connect to the media server. Please check your network connection and try again.");
+    return;
+  }
 
   pc.ontrack = (event) => {
     if (event.track.kind == 'video') {
@@ -113,8 +120,18 @@ async function createPeerConnection() {
 
   pc.onconnectionstatechange = () => {
     console.log('Connection state change: ' + pc.connectionState);
-    if (pc.connectionState == 'failed') {
-      pc.restartIce();
+    switch (pc.connectionState) {
+      case 'disconnected':
+        console.warn('Peer connection disconnected. The browser will try to reconnect.');
+        break;
+      case 'failed':
+        console.error('Peer connection failed. Restarting ICE to try to recover.');
+        pc.restartIce();
+        break;
+      case 'closed':
+        console.error('Peer connection closed.');
+        // In a real-world app, you'd likely want to trigger a full reconnect here.
+        break;
     }
   };
   pc.onicecandidate = (event) => {
@@ -140,7 +157,7 @@ async function setupLocalMedia() {
     setupPreview();
   } catch (error) {
     console.error('Error accessing media devices:', error);
-    alert('Could not access webcam and microphone. Please ensure permissions are granted and no other application is using the camera.');
+    displayErrorMessage('Could not access webcam and microphone. Please ensure permissions are granted and no other application is using the camera.');
   }
 }
 
@@ -158,20 +175,45 @@ function setupPreview() {
   }
 }
 
-async function joinChannel(roomId, name) {
+async function joinChannel(roomId, name, token) {
   const socket = new Socket('/socket');
   socket.connect();
-  channel = socket.channel(`peer:${roomId}`, { name: name });
+  channel = socket.channel(`peer:${roomId}`, { name: name, token: token });
+
+  const reconnectionStatus = document.getElementById('reconnection-status');
+
+  const reconnectChannel = () => {
+    console.log('Attempting to reconnect Phoenix channel...');
+    if (reconnectionStatus) {
+      reconnectionStatus.innerText = 'Reconnecting...';
+      reconnectionStatus.classList.remove('hidden');
+    }
+    socket.disconnect(); // Disconnect existing socket to ensure a clean reconnect
+    socket.connect();
+    channel = socket.channel(`peer:${roomId}`, { name: name, token: token });
+    channel.join()
+      .receive('ok', () => {
+        console.log('Phoenix channel reconnected successfully!');
+        if (reconnectionStatus) {
+          reconnectionStatus.classList.add('hidden');
+        }
+      })
+      .receive('error', (resp) => {
+        console.error('Phoenix channel reconnection failed:', resp);
+        if (reconnectionStatus) {
+          reconnectionStatus.innerText = 'Reconnection failed. Retrying...';
+        }
+        setTimeout(reconnectChannel, 5000); // Retry after 5 seconds
+      });
+  };
 
   channel.onError(() => {
     console.error('Phoenix channel error!');
-    socket.disconnect();
-    // window.location.reload(); // Commented out for debugging
+    reconnectChannel();
   });
   channel.onClose(() => {
     console.warn('Phoenix channel closed!');
-    socket.disconnect();
-    // window.location.reload(); // Commented out for debugging
+    reconnectChannel();
   });
 
   channel.on('sdp_offer', async (payload) => {
@@ -275,11 +317,18 @@ async function joinChannel(roomId, name) {
         });
     
         channel.on('youtube_video_shared', (payload) => {
+          AppState.presentationMode = 'youtube';
+          AppState.activeSharer.name = payload.sender;
+          updateUI();
+
           const videoId = payload.video_id;
           const playerDiv = document.createElement('div');
           playerDiv.id = 'youtube-player';
           playerDiv.className = 'w-full h-full';
-          startPresentation(playerDiv);
+          
+          // Clear main stage and add new player
+          mainStage.innerHTML = '';
+          mainStage.appendChild(playerDiv);
     
           youtubePlayer = new YT.Player('youtube-player', {
             videoId: videoId,
@@ -288,31 +337,47 @@ async function joinChannel(roomId, name) {
               'onReady': (event) => event.target.playVideo(),
             }
           });
-    
-          document.getElementById('open-youtube-modal').classList.add('hidden');
-          document.getElementById('stop-sharing-button').classList.remove('hidden');
         });
     channel.on('new_direct_video', (payload) => {
+      AppState.presentationMode = 'direct';
+      AppState.activeSharer.name = payload.sender;
+      updateUI();
+
       const url = payload.url;
       const videoPlayer = document.createElement('video');
       videoPlayer.src = url;
       videoPlayer.controls = true;
       videoPlayer.autoplay = true;
       videoPlayer.className = 'w-full h-full object-contain';
-      startPresentation(videoPlayer);
-
-      document.getElementById('open-youtube-modal').classList.add('hidden');
-      document.getElementById('stop-sharing-button').classList.remove('hidden');
+      
+      mainStage.innerHTML = '';
+      mainStage.appendChild(videoPlayer);
     });
 
     channel.on('video_share_stopped', () => {
-      stopPresentation();
+      AppState.presentationMode = 'none';
+      AppState.activeSharer.name = null;
+      AppState.activeSharer.id = null;
+      updateUI();
+
       if (youtubePlayer) {
         youtubePlayer.destroy();
         youtubePlayer = null;
       }
-      document.getElementById('open-youtube-modal').classList.remove('hidden');
-      document.getElementById('stop-sharing-button').classList.add('hidden');
+      mainStage.innerHTML = '';
+    });
+
+    channel.on('screen_share_started', (payload) => {
+      AppState.presentationMode = 'screen';
+      AppState.activeSharer.id = payload.peer_id;
+      AppState.activeSharer.name = payload.name;
+      updateUI();
+
+      const videoContainer = document.getElementById(`video-container-${payload.peer_id}`);
+      if (videoContainer) {
+        mainStage.innerHTML = '';
+        mainStage.appendChild(videoContainer);
+      }
     });
 }
 
@@ -336,18 +401,18 @@ function updateVideoGrid() {
 }
 
 export const Room = {
-  isScreenSharing: false,
   screenShareStream: null,
   originalVideoTrack: null,
 
   async mounted() {
     const roomId = this.el.dataset.roomId;
     const name = this.el.dataset.name;
+    const token = this.el.dataset.token;
     document.getElementById('name-overlay-local').innerText = name;
 
     await createPeerConnection();
     await setupLocalMedia();
-    joinChannel(roomId, name);
+    joinChannel(roomId, name, token);
 
     loadYoutubeAPI();
 
@@ -403,12 +468,8 @@ export const Room = {
     const chatMessages = document.getElementById('chat-messages');
     const chatInput = document.getElementById('chat-input');
     const sendChatMessage = document.getElementById('send-chat-message');
-    const chatPanel = document.getElementById('chat-panel');
     const toggleChatButton = document.getElementById('toggle-chat');
     const closeChatButton = document.getElementById('close-chat-panel');
-    const chatNotificationBadge = document.getElementById('chat-notification-badge');
-    let unreadMessages = 0;
-    let isChatOpen = false;
 
     const sendMessage = () => {
       const message = chatInput.value;
@@ -418,31 +479,8 @@ export const Room = {
       }
     };
 
-    const openChat = () => {
-      isChatOpen = true;
-      chatPanel.classList.remove('translate-x-full');
-      chatPanel.classList.remove('md:hidden'); // Ensure chat is visible on larger screens
-      if (isMobile()) {
-        toggleChatButton.classList.add('hidden'); // Hide toggle button on mobile when chat is open
-      }
-      unreadMessages = 0;
-      chatNotificationBadge.classList.add('hidden');
-      chatNotificationBadge.innerText = '';
-    };
-
-    const closeChat = () => {
-      isChatOpen = false;
-      chatPanel.classList.add('translate-x-full');
-      chatPanel.classList.add('md:hidden');
-      if (isMobile()) {
-        toggleChatButton.classList.remove('hidden'); // Show toggle button on mobile when chat is closed
-      }
-    };
-
-    // Initial state for desktop: chat should be hidden by default
-    if (!isMobile()) {
-      chatPanel.classList.add('md:hidden');
-    }
+    // Initial UI update
+    updateUI();
 
     sendChatMessage.addEventListener('click', sendMessage);
     chatInput.addEventListener('keypress', (event) => {
@@ -452,22 +490,21 @@ export const Room = {
     });
 
     toggleChatButton.addEventListener('click', () => {
-      if (isChatOpen) {
-        closeChat();
-      } else {
-        openChat();
+      setChatOpen(!AppState.isChatOpen);
+      if (AppState.isChatOpen) {
+        // Scroll to bottom when opening
+        chatMessages.scrollTop = chatMessages.scrollHeight;
       }
     });
-    closeChatButton.addEventListener('click', closeChat);
+    closeChatButton.addEventListener('click', () => setChatOpen(false));
 
     // Handle chat visibility on window resize
-    window.addEventListener('resize', handleChatVisibility);
-    // Initial call to set correct visibility based on screen size
-    handleChatVisibility();    channel.on('new_message', (payload) => {
-      if (!isChatOpen) {
-        unreadMessages++;
-        chatNotificationBadge.innerText = unreadMessages;
-        chatNotificationBadge.classList.remove('hidden');
+    window.addEventListener('resize', updateUI);
+
+    channel.on('new_message', (payload) => {
+      if (!AppState.isChatOpen) {
+        AppState.unreadMessages++;
+        updateUI();
       }
 
       const messageElement = document.createElement('div');
@@ -495,7 +532,9 @@ export const Room = {
       messageElement.appendChild(messageBody);
   
       chatMessages.appendChild(messageElement);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
     });
 
 function isMobile() {
@@ -521,6 +560,50 @@ function handleChatVisibility() {
     }
 }
 
+function updateUI() {
+  const chatPanel = document.getElementById('chat-panel');
+  const toggleChatButton = document.getElementById('toggle-chat');
+  const chatNotificationBadge = document.getElementById('chat-notification-badge');
+
+  // Chat Panel
+  chatPanel.classList.toggle('translate-x-full', !AppState.isChatOpen);
+  chatPanel.classList.toggle('md:hidden', !AppState.isChatOpen && !isMobile());
+
+  if (isMobile()) {
+    toggleChatButton.classList.toggle('hidden', AppState.isChatOpen);
+  } else {
+    toggleChatButton.classList.remove('hidden');
+  }
+
+  // Chat Badge
+  chatNotificationBadge.classList.toggle('hidden', AppState.unreadMessages === 0);
+  chatNotificationBadge.innerText = AppState.unreadMessages > 0 ? AppState.unreadMessages : '';
+
+  // Presentation Mode
+  presentationLayout.classList.toggle('hidden', !AppState.isPresenting);
+  videoPlayerWrapper.classList.toggle('hidden', AppState.isPresenting);
+
+  // Buttons
+  const myName = document.getElementById('room').dataset.name;
+  const isMyShare = AppState.activeSharer.name === myName;
+
+  const stopSharingButton = document.getElementById('stop-sharing-button');
+  const openYoutubeModal = document.getElementById('open-youtube-modal');
+  const toggleScreenShare = document.getElementById('toggle-screen-share');
+
+  stopSharingButton.classList.toggle('hidden', !AppState.isPresenting || !isMyShare);
+  openYoutubeModal.classList.toggle('hidden', AppState.isPresenting);
+  toggleScreenShare.classList.toggle('hidden', AppState.isPresenting);
+}
+
+function setChatOpen(isOpen) {
+  AppState.isChatOpen = isOpen;
+  if (isOpen) {
+    AppState.unreadMessages = 0;
+  }
+  updateUI();
+}
+
     // Share Video Logic
     const youtubeUrlInput = document.getElementById('youtube-url-input');
     const shareVideoButton = document.getElementById('share-youtube-video');
@@ -535,14 +618,14 @@ function handleChatVisibility() {
       } else if (url.match(/\.mp4$|\.webm$|\.ogg$/)) {
         channel.push('share_direct_video', { url: url });
       } else {
-        alert('Please enter a valid YouTube or direct video URL.');
+        displayErrorMessage('Please enter a valid YouTube or direct video URL.');
       }
 
       youtubeUrlInput.value = ''; // Clear input
     });
 
     stopSharingButton.addEventListener('click', () => {
-      if (this.isScreenSharing) {
+      if (AppState.presentationMode === 'screen') {
         this.stopScreenShare();
       } else {
         channel.push('stop_video_share', {});
@@ -572,18 +655,27 @@ function handleChatVisibility() {
 
     this.originalVideoTrack = videoSender.track;
     videoSender.replaceTrack(screenTrack);
-    this.isScreenSharing = true;
+
+    const myName = document.getElementById('room').dataset.name;
+    AppState.presentationMode = 'screen';
+    AppState.activeSharer.name = myName;
+    updateUI();
 
     const screenVideoElement = document.createElement('video');
     screenVideoElement.srcObject = this.screenShareStream;
     screenVideoElement.autoplay = true;
     screenVideoElement.playsInline = true;
     screenVideoElement.className = 'w-full h-full object-contain';
-    startPresentation(screenVideoElement);
 
-    document.getElementById('open-youtube-modal').classList.add('hidden');
-    document.getElementById('toggle-screen-share').classList.add('hidden');
-    document.getElementById('stop-sharing-button').classList.remove('hidden');
+    const screenVideoContainer = document.createElement('div');
+    screenVideoContainer.id = 'local-screen-share-container';
+    screenVideoContainer.className = 'w-full h-full bg-black';
+    screenVideoContainer.appendChild(screenVideoElement);
+
+    mainStage.innerHTML = '';
+    mainStage.appendChild(screenVideoContainer);
+
+    channel.push('start_screen_share', {});
 
     screenTrack.onended = () => {
       this.stopScreenShare();
@@ -600,14 +692,11 @@ function handleChatVisibility() {
 
     this.screenShareStream.getTracks().forEach(track => track.stop());
 
-    this.isScreenSharing = false;
     this.screenShareStream = null;
     this.originalVideoTrack = null;
 
-    stopPresentation();
+    channel.push('stop_screen_share', {});
 
-    document.getElementById('open-youtube-modal').classList.remove('hidden');
-    document.getElementById('toggle-screen-share').classList.remove('hidden');
-    document.getElementById('stop-sharing-button').classList.add('hidden');
+    // The video_share_stopped handler will update the state and UI
   }
 };
