@@ -280,12 +280,31 @@ async function joinChannel(roomId, name) {
         channel.on('youtube_video_shared', (payload) => {
           sharerId = payload.sharer_id;
           const videoId = payload.video_id;
+
+          const wrapper = document.createElement('div');
+          wrapper.style.position = 'relative';
+          wrapper.style.width = '100%';
+          wrapper.style.height = '100%';
+
           const playerDiv = document.createElement('div');
           playerDiv.id = 'youtube-player';
           playerDiv.className = 'w-full h-full';
-          startPresentation(playerDiv);
+          wrapper.appendChild(playerDiv);
         
           const isSharer = peerId === sharerId;
+
+          if (!isSharer) {
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.top = 0;
+            overlay.style.left = 0;
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.zIndex = 10;
+            wrapper.appendChild(overlay);
+          }
+
+          startPresentation(wrapper);
         
           youtubePlayer = new YT.Player('youtube-player', {
             videoId: videoId,
@@ -603,6 +622,10 @@ function handleChatVisibility() {
   },
 
   async startScreenShare() {
+    if (sharerId !== null) {
+      alert('Another user is already presenting. Please wait for them to finish.');
+      return;
+    }
     if (this.isScreenSharing) return;
 
     try {
