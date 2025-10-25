@@ -119,6 +119,22 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
+  def handle_in("screen_share_started", %{"sharer_id" => sharer_id}, socket) do
+    Logger.info("Screen share started by #{sharer_id} in room #{socket.assigns.room_id}")
+    Rooms.set_shared_video(socket.assigns.room_id, %{type: :screen_share, sharer_id: sharer_id})
+    broadcast!(socket, "screen_share_started", %{sharer_id: sharer_id})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("screen_share_stopped", _, socket) do
+    Logger.info("Screen share stopped in room #{socket.assigns.room_id}")
+    Rooms.clear_shared_video(socket.assigns.room_id)
+    broadcast!(socket, "screen_share_stopped", %{})
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_cast({:offer, sdp_offer}, socket) do
     push(socket, "sdp_offer", %{"body" => sdp_offer})
     {:noreply, socket}
@@ -144,6 +160,8 @@ defmodule NexusWeb.PeerChannel do
           push(socket, "youtube_video_shared", %{video_id: shared_video.id, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
         :direct ->
           push(socket, "new_direct_video", %{url: shared_video.url, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+        :screen_share ->
+          push(socket, "screen_share_started", %{sharer_id: shared_video.sharer_id})
       end
     end
 

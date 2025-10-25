@@ -28,6 +28,8 @@ let presences = {};
 let youtubePlayer = null;
 let peerId = null;
 let sharerId = null;
+let peerVideoElements = {}; // New map to store video elements per peer
+let localScreenShareVideoElement = null; // To hold the local screen share video element
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -44,28 +46,45 @@ function extractYoutubeVideoId(url) {
   return (match && match[1]) ? match[1] : null;
 }
 
-function startPresentation(sharedVideoElement) {
+function startPresentation(contentElement) {
   presentationLayout.classList.remove('hidden');
   videoPlayerWrapper.classList.add('hidden');
 
-  // Move all video elements to the filmstrip
-  while (videoPlayerWrapper.firstChild) {
-    filmstrip.appendChild(videoPlayerWrapper.firstChild);
-  }
+  // Move all video elements from videoPlayerWrapper to the filmstrip
+  // Include localVideoPlayer if it's not hidden
+  Array.from(videoPlayerWrapper.children).forEach(child => {
+    if (child.id.startsWith('video-container-') || child.id === 'video-container-local') {
+      filmstrip.appendChild(child);
+    }
+  });
 
-  mainStage.appendChild(sharedVideoElement);
+  mainStage.innerHTML = ''; // Clear any previous content (e.g., YouTube iframe)
+  if (contentElement.parentNode) {
+    contentElement.parentNode.removeChild(contentElement);
+  }
+  mainStage.appendChild(contentElement);
 }
 
 function stopPresentation() {
   presentationLayout.classList.add('hidden');
   videoPlayerWrapper.classList.remove('hidden');
 
-  // Move all video elements back to the grid
-  while (filmstrip.firstChild) {
-    videoPlayerWrapper.appendChild(filmstrip.firstChild);
-  }
+  // Move all video elements from filmstrip back to the grid
+  Array.from(filmstrip.children).forEach(child => {
+    if (child.id.startsWith('video-container-') || child.id === 'video-container-local') {
+      videoPlayerWrapper.appendChild(child);
+    }
+  });
 
-  mainStage.innerHTML = '';
+  // Move the video element from mainStage back to videoPlayerWrapper if it's a video container
+  if (mainStage.firstChild && mainStage.firstChild.id && 
+      (mainStage.firstChild.id.startsWith('video-container-') || mainStage.firstChild.id === 'local-screen-share-video-container')) {
+    videoPlayerWrapper.appendChild(mainStage.firstChild);
+  } else {
+    // If it was a YouTube iframe or other non-reusable content, just clear it
+    mainStage.innerHTML = '';
+  }
+  updateVideoGrid();
 }
 
 async function createPeerConnection() {
@@ -74,36 +93,70 @@ async function createPeerConnection() {
   pc.ontrack = (event) => {
     if (event.track.kind == 'video') {
       const streamId = event.streams[0].id;
-      const peerId = streamIdToPeerId[streamId];
-      const userName = presences[peerId]?.name || 'Guest';
+      const remotePeerId = streamIdToPeerId[streamId];
+      const userName = presences[remotePeerId]?.name || 'Guest';
 
-      console.log(`Creating new video element for peer ${peerId}`);
+      let videoContainer = peerVideoElements[remotePeerId]?.videoContainer;
+      let videoPlayer = peerVideoElements[remotePeerId]?.videoPlayer;
+      let nameOverlay = peerVideoElements[remotePeerId]?.nameOverlay;
 
-      const videoContainer = document.createElement('div');
-      videoContainer.id = `video-container-${peerId}`;
-      videoContainer.className = 'relative';
+      if (!videoContainer) {
+        console.log(`Creating new video element for peer ${remotePeerId}`);
+        videoContainer = document.createElement('div');
+        videoContainer.id = `video-container-${remotePeerId}`;
+        videoContainer.className = 'relative';
 
-      const videoPlayer = document.createElement('video');
+        videoPlayer = document.createElement('video');
+        videoPlayer.autoplay = true;
+        videoPlayer.playsInline = true;
+        videoPlayer.className = 'rounded-xl w-full h-full object-cover';
+        videoPlayer.id = `video-player-${remotePeerId}`;
+
+        nameOverlay = document.createElement('div');
+        nameOverlay.id = `name-overlay-${remotePeerId}`;
+        nameOverlay.className = 'absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded';
+        nameOverlay.innerText = userName;
+
+        videoContainer.appendChild(videoPlayer);
+        videoContainer.appendChild(nameOverlay);
+
+        peerVideoElements[remotePeerId] = { videoContainer, videoPlayer, nameOverlay };
+      } else {
+        console.log(`Updating existing video element for peer ${remotePeerId}`);
+      }
+
       videoPlayer.srcObject = event.streams[0];
-      videoPlayer.autoplay = true;
-      videoPlayer.playsInline = true;
-      videoPlayer.className = 'rounded-xl w-full h-full object-cover';
-      videoPlayer.id = `video-player-${peerId}`;
 
-      const nameOverlay = document.createElement('div');
-      nameOverlay.id = `name-overlay-${peerId}`;
-      nameOverlay.className = 'absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded';
-      nameOverlay.innerText = userName;
+      console.log("pc.ontrack debug:", {
+        trackLabel: event.track.label,
+        remotePeerId: remotePeerId,
+        globalSharerId: sharerId
+      });
 
-      videoContainer.appendChild(videoPlayer);
-      videoContainer.appendChild(nameOverlay);
-      videoPlayerWrapper.appendChild(videoContainer);
-      updateVideoGrid();
+      if (remotePeerId === sharerId) {
+        // This is the active screen share, put it in mainStage
+        startPresentation(videoContainer);
+        console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
+
+      } else {
+        // Regular camera feed or inactive screen share, add to videoPlayerWrapper
+        // Ensure it's not already in videoPlayerWrapper or filmstrip
+        if (!videoPlayerWrapper.contains(videoContainer) && !filmstrip.contains(videoContainer)) {
+          videoPlayerWrapper.appendChild(videoContainer);
+        }
+        updateVideoGrid();
+      }
 
       event.track.onended = (_) => {
         console.log('Track ended: ' + event.track.id);
-        videoPlayerWrapper.removeChild(videoContainer);
-        updateVideoGrid();
+        // If the ended track was the main stage screen share, stop presentation
+        if (remotePeerId === sharerId) {
+          stopPresentation();
+        }
+        // Do NOT remove the container. It will be reused for the next track.
+        // The videoPlayer.srcObject will become null or inactive naturally.
+        // If a new track arrives for this peer, srcObject will be updated.
+        // If the peer leaves, the presence.onLeave handler will remove the container.
       };
     } else {
       console.log('New audio track added');
@@ -235,9 +288,11 @@ async function joinChannel(roomId, name) {
     
       presence.onLeave((id, _current, { metas: [user, ..._] }) => {
         delete presences[id];
-        const videoContainer = document.getElementById(`video-container-${id}`);
+        // When a peer leaves, remove their video container from the DOM and peerVideoElements map
+        const videoContainer = peerVideoElements[id]?.videoContainer;
         if (videoContainer) {
-          videoPlayerWrapper.removeChild(videoContainer);
+          videoContainer.remove();
+          delete peerVideoElements[id];
           updateVideoGrid();
         }
         if(peerCount) peerCount.innerText = Object.keys(presences).length;
@@ -252,8 +307,10 @@ async function joinChannel(roomId, name) {
             const video = resp.shared_video;
             if (video.type === 'youtube') {
               channel.trigger('youtube_video_shared', { video_id: video.id, sender: video.sender, sharer_id: video.sharer_id });
-            } else {
+            } else if (video.type === 'direct') {
               channel.trigger('new_direct_video', { url: video.url, sender: video.sender, sharer_id: video.sharer_id });
+            } else if (video.type === 'screen_share') {
+              channel.trigger('screen_share_started', { sharer_id: video.sharer_id });
             }
           }
         })
@@ -262,7 +319,7 @@ async function joinChannel(roomId, name) {
           socket.disconnect();
     
           const localVideoContainer = document.getElementById('video-container-local');
-          if (localVideoContainer) videoPlayerWrapper.removeChild(localVideoContainer);
+          if (localVideoContainer) localVideoContainer.remove(); // Use .remove() for direct removal
           
           console.log(`Closing stream with id: ${localStream.id}`);
           localStream.getTracks().forEach((track) => track.stop());
@@ -317,7 +374,10 @@ async function joinChannel(roomId, name) {
             events: {
               onReady: (event) => {
                 if (isSharer) {
-                  event.target.playVideo();
+                  channel.push('player_state_change', {
+                    state: event.data,
+                    time: event.target.getCurrentTime(),
+                  });
                 }
               },
               onStateChange: (event) => {
@@ -382,6 +442,23 @@ async function joinChannel(roomId, name) {
       sharerId = null;
       document.getElementById('open-youtube-modal').classList.remove('hidden');
       document.getElementById('stop-sharing-button').classList.add('hidden');
+    });
+
+    channel.on('screen_share_started', (payload) => {
+      console.log("screen_share_started event received:", payload);
+      sharerId = payload.sharer_id;
+
+      const screenShareVideoContainer = peerVideoElements[sharerId]?.videoContainer;
+      if (screenShareVideoContainer) {
+        startPresentation(screenShareVideoContainer);
+        console.log(`Screen share from ${sharerId} moved to main stage after sharerId update.`);
+      }
+    });
+
+    channel.on('screen_share_stopped', () => {
+      console.log("screen_share_stopped event received.");
+      sharerId = null;
+      stopPresentation();
     });
 }
 
@@ -523,7 +600,8 @@ export const Room = {
     toggleChatButton.addEventListener('click', () => {
       if (isChatOpen) {
         closeChat();
-      } else {
+      }
+      else {
         openChat();
       }
     });
@@ -582,7 +660,8 @@ function handleChatVisibility() {
             // Optionally, remove md:hidden if it was added for mobile
             chatContainer.classList.remove('md:hidden');
         }
-    } else {
+    }
+    else {
         // On desktop, we don't automatically show/hide the chat based on window size.
         // Its visibility is controlled by the toggle button.
         // If it's desktop and chat is hidden, we do nothing here.
@@ -613,7 +692,8 @@ function handleChatVisibility() {
     stopSharingButton.addEventListener('click', () => {
       if (this.isScreenSharing) {
         this.stopScreenShare();
-      } else {
+      }
+      else {
         channel.push('stop_video_share', {});
       }
     });
@@ -647,12 +727,32 @@ function handleChatVisibility() {
     videoSender.replaceTrack(screenTrack);
     this.isScreenSharing = true;
 
-    const screenVideoElement = document.createElement('video');
-    screenVideoElement.srcObject = this.screenShareStream;
-    screenVideoElement.autoplay = true;
-    screenVideoElement.playsInline = true;
-    screenVideoElement.className = 'w-full h-full object-contain';
-    startPresentation(screenVideoElement);
+    channel.push('screen_share_started', { sharer_id: peerId });
+
+    // Create a temporary video element for the local screen share
+    localScreenShareVideoElement = document.createElement('div'); // Use div as container
+    localScreenShareVideoElement.id = `local-screen-share-video-container`; // Give it a unique ID
+    localScreenShareVideoElement.className = 'relative w-full h-full';
+
+    const videoPlayer = document.createElement('video');
+    videoPlayer.srcObject = this.screenShareStream;
+    videoPlayer.autoplay = true;
+    videoPlayer.playsInline = true;
+    videoPlayer.className = 'w-full h-full object-contain';
+    videoPlayer.id = `local-screen-share-video-player`;
+
+    const nameOverlay = document.createElement('div');
+    nameOverlay.id = `name-overlay-local-screen-share`;
+    nameOverlay.className = 'absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded';
+    nameOverlay.innerText = "You (Screen Share)";
+
+    localScreenShareVideoElement.appendChild(videoPlayer);
+    localScreenShareVideoElement.appendChild(nameOverlay);
+
+    startPresentation(localScreenShareVideoElement); // Pass this temporary element
+
+    // The local camera feed (video-container-local) will be moved to filmstrip by startPresentation
+    // No need to hide it explicitly.
 
     document.getElementById('open-youtube-modal').classList.add('hidden');
     document.getElementById('toggle-screen-share').classList.add('hidden');
@@ -677,7 +777,21 @@ function handleChatVisibility() {
     this.screenShareStream = null;
     this.originalVideoTrack = null;
 
-    stopPresentation();
+    channel.push('screen_share_stopped', {});
+
+    // Remove the local screen share video element from mainStage
+    if (localScreenShareVideoElement && mainStage.contains(localScreenShareVideoElement)) {
+      mainStage.removeChild(localScreenShareVideoElement);
+    }
+    localScreenShareVideoElement = null; // Clear the reference
+
+    stopPresentation(); // This will revert the layout
+
+    // Show local camera feed again
+    const localCameraContainer = document.getElementById('video-container-local');
+    if (localCameraContainer) {
+      localCameraContainer.classList.remove('hidden');
+    }
 
     document.getElementById('open-youtube-modal').classList.remove('hidden');
     document.getElementById('toggle-screen-share').classList.remove('hidden');
