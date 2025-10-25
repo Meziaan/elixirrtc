@@ -88,6 +88,11 @@ defmodule Nexus.Room do
   end
 
   @impl true
+  def handle_call(:get_shared_video, _from, state) do
+    {:reply, state.shared_video, state}
+  end
+
+  @impl true
   def handle_info({:peer_ready_timeout, peer}, state) do
     if is_map_key(state.pending_peers, peer) do
       Logger.warning(

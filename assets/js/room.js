@@ -26,6 +26,8 @@ let localTracksAdded = false;
 let streamIdToPeerId = {};
 let presences = {};
 let youtubePlayer = null;
+let peerId = null;
+let sharerId = null;
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -245,12 +247,13 @@ async function joinChannel(roomId, name) {
         .join()
         .receive('ok', (resp) => {
           console.log('Joined channel successfully', resp);
+          peerId = resp.peer_id;
           if (resp && resp.shared_video) {
             const video = resp.shared_video;
             if (video.type === 'youtube') {
-              channel.trigger('youtube_video_shared', { video_id: video.id, sender: video.sender });
+              channel.trigger('youtube_video_shared', { video_id: video.id, sender: video.sender, sharer_id: video.sharer_id });
             } else {
-              channel.trigger('new_direct_video', { url: video.url, sender: video.sender });
+              channel.trigger('new_direct_video', { url: video.url, sender: video.sender, sharer_id: video.sharer_id });
             }
           }
         })
@@ -275,34 +278,80 @@ async function joinChannel(roomId, name) {
         });
     
         channel.on('youtube_video_shared', (payload) => {
+          sharerId = payload.sharer_id;
           const videoId = payload.video_id;
           const playerDiv = document.createElement('div');
           playerDiv.id = 'youtube-player';
           playerDiv.className = 'w-full h-full';
           startPresentation(playerDiv);
-    
+        
+          const isSharer = peerId === sharerId;
+        
           youtubePlayer = new YT.Player('youtube-player', {
             videoId: videoId,
-            playerVars: { autoplay: 1 },
+            playerVars: {
+              autoplay: 1,
+              controls: isSharer ? 1 : 0,
+              rel: 0,
+              iv_load_policy: 3,
+            },
             events: {
-              'onReady': (event) => event.target.playVideo(),
-            }
+              onReady: (event) => {
+                if (isSharer) {
+                  event.target.playVideo();
+                }
+              },
+              onStateChange: (event) => {
+                if (isSharer) {
+                  channel.push('player_state_change', {
+                    state: event.data,
+                    time: event.target.getCurrentTime(),
+                  });
+                }
+              },
+            },
           });
-    
+        
           document.getElementById('open-youtube-modal').classList.add('hidden');
-          document.getElementById('stop-sharing-button').classList.remove('hidden');
+          if (isSharer) {
+            document.getElementById('stop-sharing-button').classList.remove('hidden');
+          }
         });
+
+    channel.on('player_state_change', (payload) => {
+      if (peerId !== sharerId && youtubePlayer) {
+        switch (payload.state) {
+          case YT.PlayerState.PLAYING:
+            youtubePlayer.seekTo(payload.time, true);
+            youtubePlayer.playVideo();
+            break;
+          case YT.PlayerState.PAUSED:
+            youtubePlayer.seekTo(payload.time, true);
+            youtubePlayer.pauseVideo();
+            break;
+          case YT.PlayerState.ENDED:
+            youtubePlayer.stopVideo();
+            break;
+        }
+      }
+    });
+
     channel.on('new_direct_video', (payload) => {
+      sharerId = payload.sharer_id;
+      const isSharer = peerId === sharerId;
+
       const url = payload.url;
       const videoPlayer = document.createElement('video');
       videoPlayer.src = url;
-      videoPlayer.controls = true;
+      videoPlayer.controls = isSharer;
       videoPlayer.autoplay = true;
       videoPlayer.className = 'w-full h-full object-contain';
       startPresentation(videoPlayer);
 
       document.getElementById('open-youtube-modal').classList.add('hidden');
-      document.getElementById('stop-sharing-button').classList.remove('hidden');
+      if (isSharer) {
+        document.getElementById('stop-sharing-button').classList.remove('hidden');
+      }
     });
 
     channel.on('video_share_stopped', () => {
@@ -311,6 +360,7 @@ async function joinChannel(roomId, name) {
         youtubePlayer.destroy();
         youtubePlayer = null;
       }
+      sharerId = null;
       document.getElementById('open-youtube-modal').classList.remove('hidden');
       document.getElementById('stop-sharing-button').classList.add('hidden');
     });
