@@ -135,6 +135,14 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
+  def handle_in("webrtc_renegotiate", _payload, socket) do
+    Logger.info("Peer #{socket.assigns.peer} requested WebRTC renegotiation.")
+    # Trigger the peer to send a new SDP offer
+    Peer.notify(socket.assigns.peer, :send_offer)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_cast({:offer, sdp_offer}, socket) do
     push(socket, "sdp_offer", %{"body" => sdp_offer})
     {:noreply, socket}

@@ -329,6 +329,12 @@ defmodule Nexus.Peer do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_cast(:send_offer, state) do
+    Logger.debug("Peer #{state.id} received request to send new offer.")
+    {:noreply, send_offer(state)}
+  end
+
   defp setup_transceivers(pc, peer_ids) do
     # Inbound tracks
     {:ok, _tr} = PeerConnection.add_transceiver(pc, :video, direction: :recvonly)

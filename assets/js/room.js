@@ -168,8 +168,20 @@ async function createPeerConnection() {
 
   pc.onconnectionstatechange = () => {
     console.log('Connection state change: ' + pc.connectionState);
+    const errorNode = document.getElementById('join-error-message');
     if (pc.connectionState == 'failed') {
-      pc.restartIce();
+      if (errorNode) {
+        errorNode.innerText = 'Connection unstable. Attempting to reconnect...';
+        errorNode.classList.remove('hidden');
+      }
+    } else if (errorNode && !errorNode.classList.contains('hidden') && pc.connectionState == 'connected') {
+      // If connection recovers, hide the message
+      errorNode.classList.add('hidden');
+      errorNode.innerText = '';
+    } else if (errorNode && !errorNode.classList.contains('hidden') && pc.connectionState == 'disconnected') {
+      // If disconnected, but not failed, keep the message or update it
+      errorNode.innerText = 'Disconnected. Attempting to reconnect...';
+      errorNode.classList.remove('hidden');
     }
   };
   pc.onicecandidate = (event) => {
@@ -195,7 +207,11 @@ async function setupLocalMedia() {
     setupPreview();
   } catch (error) {
     console.error('Error accessing media devices:', error);
-    alert('Could not access webcam and microphone. Please ensure permissions are granted and no other application is using the camera.');
+    const errorNode = document.getElementById('join-error-message');
+    if (errorNode) {
+      errorNode.innerText = 'Could not access webcam and microphone. Please ensure permissions are granted and no other application is using the camera.';
+      errorNode.classList.remove('hidden');
+    }
   }
 }
 
@@ -216,17 +232,30 @@ function setupPreview() {
 async function joinChannel(roomId, name) {
   const socket = new Socket('/socket');
   socket.connect();
+
+  socket.onOpen(() => {
+    console.log("Phoenix Socket reconnected. Requesting WebRTC renegotiation.");
+    // Push an event to the channel to request a new SDP offer from the server
+    channel.push("webrtc_renegotiate", {});
+    // Also explicitly hide the error message on socket reconnection,
+    // assuming WebRTC will follow shortly. This provides a quicker visual feedback.
+    const errorNode = document.getElementById('join-error-message');
+    if (errorNode && !errorNode.classList.contains('hidden')) {
+      errorNode.classList.add('hidden');
+      errorNode.innerText = '';
+      console.log("Hidden error message on Phoenix Socket reconnection.");
+    }
+  });
+
   channel = socket.channel(`peer:${roomId}`, { name: name });
 
   channel.onError(() => {
     console.error('Phoenix channel error!');
-    socket.disconnect();
-    // window.location.reload(); // Commented out for debugging
+    // Let the socket handle reconnection attempts
   });
   channel.onClose(() => {
     console.warn('Phoenix channel closed!');
-    socket.disconnect();
-    // window.location.reload(); // Commented out for debugging
+    // Let the socket handle reconnection attempts
   });
 
   channel.on('sdp_offer', async (payload) => {
@@ -300,8 +329,20 @@ async function joinChannel(roomId, name) {
     
       channel
         .join()
-        .receive('ok', (resp) => {
+        .receive('ok', async (resp) => {
           console.log('Joined channel successfully', resp);
+
+          // If pc already exists, close it before creating a new one
+          if (pc) {
+            console.log("Closing existing PeerConnection before rejoining channel.");
+            pc.close();
+            pc = null; // Clear the reference
+            localTracksAdded = false; // Reset flag for adding tracks
+          }
+
+          // Recreate PeerConnection
+          await createPeerConnection(); // Ensure pc is re-initialized
+
           peerId = resp.peer_id;
           if (resp && resp.shared_video) {
             const video = resp.shared_video;
@@ -312,6 +353,13 @@ async function joinChannel(roomId, name) {
             } else if (video.type === 'screen_share') {
               channel.trigger('screen_share_started', { sharer_id: video.sharer_id });
             }
+          }
+
+          // Re-add local tracks if localStream is available
+          if (localStream && !localTracksAdded) {
+            console.log('Re-adding local tracks to new peer connection');
+            localStream.getTracks().forEach((track) => pc.addTrack(track));
+            localTracksAdded = true;
           }
         })
         .receive('error', (resp) => {
@@ -330,6 +378,9 @@ async function joinChannel(roomId, name) {
           if (resp == 'peer_limit_reached') {
             errorNode.innerText +=
               ': Peer limit reached. Try again in a few minutes';
+          } else if (resp == 'peer_start_failed') {
+            errorNode.innerText +=
+              ': Failed to initialize your connection. Please try again.';
           }
           errorNode.classList.remove('hidden');
         });
