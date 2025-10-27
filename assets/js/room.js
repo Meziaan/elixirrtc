@@ -92,6 +92,10 @@ async function createPeerConnection() {
 
   pc.ontrack = (event) => {
     if (event.track.kind == 'video') {
+      if (!event.streams || event.streams.length === 0 || !event.streams[0]) {
+        console.warn('Received video track without an associated stream.', event);
+        return;
+      }
       const streamId = event.streams[0].id;
       const remotePeerId = streamIdToPeerId[streamId];
       const userName = presences[remotePeerId]?.name || 'Guest';
@@ -158,8 +162,14 @@ async function createPeerConnection() {
         // If a new track arrives for this peer, srcObject will be updated.
         // If the peer leaves, the presence.onLeave handler will remove the container.
       };
+    } else if (event.track.kind == 'audio') {
+      if (!event.streams || event.streams.length === 0 || !event.streams[0]) {
+        console.warn('Received audio track without an associated stream.', event);
+        return;
+      }
+      console.log('New audio track added for stream: ' + event.streams[0].id);
     } else {
-      console.log('New audio track added');
+      console.log('New track added: ' + event.track.kind);
     }
   };
 
@@ -263,6 +273,12 @@ async function joinChannel(roomId, name) {
 
     console.log('SDP offer received');
 
+    // Check if pc is null before proceeding
+    if (!pc) {
+      console.warn('Received SDP offer but PeerConnection is null. Skipping.');
+      return;
+    }
+
     await pc.setRemoteDescription({ type: 'offer', sdp: sdpOffer });
 
     if (!localTracksAdded) {
@@ -280,6 +296,12 @@ async function joinChannel(roomId, name) {
   });
 
   channel.on('ice_candidate', (payload) => {
+    // Check if pc is null before proceeding
+    if (!pc) {
+      console.warn('Received ICE candidate but PeerConnection is null. Skipping.');
+      return;
+    }
+
     const candidate = JSON.parse(payload.body);
     console.log('Received ICE candidate: ' + payload.body);
     pc.addIceCandidate(candidate);
@@ -341,7 +363,20 @@ async function joinChannel(roomId, name) {
           }
 
           // Recreate PeerConnection
-          await createPeerConnection(); // Ensure pc is re-initialized
+          try {
+            await createPeerConnection(); // Ensure pc is re-initialized
+          } catch (error) {
+            console.error("Failed to create PeerConnection during channel rejoin:", error);
+            const errorNode = document.getElementById('join-error-message');
+            if (errorNode) {
+              errorNode.innerText = 'Network is offline. Cannot establish video connection.';
+              errorNode.classList.remove('hidden');
+            }
+            // IMPORTANT: If pc creation fails, we cannot proceed with WebRTC.
+            // We might want to disconnect the channel or prevent further actions.
+            // For now, we'll just log and display the error.
+            return; // Stop further processing in this 'ok' handler
+          }
 
           peerId = resp.peer_id;
           if (resp && resp.shared_video) {
