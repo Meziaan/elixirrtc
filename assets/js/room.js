@@ -179,20 +179,22 @@ async function createPeerConnection() {
   pc.onconnectionstatechange = () => {
     console.log('Connection state change: ' + pc.connectionState);
     const errorNode = document.getElementById('join-error-message');
+
+    if (!errorNode) return; // Ensure errorNode exists
+
     if (pc.connectionState == 'failed') {
-      if (errorNode) {
-        errorNode.innerText = 'Connection unstable. Attempting to reconnect...';
-        errorNode.classList.remove('hidden');
-      }
-    } else if (errorNode && !errorNode.classList.contains('hidden') && pc.connectionState == 'connected') {
-      // If connection recovers, hide the message
-      errorNode.classList.add('hidden');
-      errorNode.innerText = '';
-    } else if (errorNode && !errorNode.classList.contains('hidden') && pc.connectionState == 'disconnected') {
-      // If disconnected, but not failed, keep the message or update it
+      errorNode.innerText = 'Connection unstable. Attempting to reconnect...';
+      errorNode.classList.remove('hidden');
+    } else if (pc.connectionState == 'disconnected') {
       errorNode.innerText = 'Disconnected. Attempting to reconnect...';
       errorNode.classList.remove('hidden');
+    } else if (pc.connectionState == 'connected') {
+      // Always hide the error message when connected, regardless of previous state
+      errorNode.classList.add('hidden');
+      errorNode.innerText = '';
     }
+    // For 'new' and 'connecting' states, we don't explicitly hide or show a message
+    // unless it's already showing a 'disconnected' or 'failed' message.
   };
   pc.onicecandidate = (event) => {
     if (event.candidate == null) {
