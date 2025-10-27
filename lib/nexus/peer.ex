@@ -337,8 +337,8 @@ defmodule Nexus.Peer do
 
   defp setup_transceivers(pc, peer_ids) do
     # Inbound tracks
-    {:ok, _tr} = PeerConnection.add_transceiver(pc, :video, direction: :recvonly)
-    {:ok, _tr} = PeerConnection.add_transceiver(pc, :audio, direction: :recvonly)
+    {:ok, _video_tr} = PeerConnection.add_transceiver(pc, :video, direction: :sendrecv)
+    {:ok, _audio_tr} = PeerConnection.add_transceiver(pc, :audio, direction: :sendrecv)
 
     # Outbound tracks
     Map.new(peer_ids, fn id ->
