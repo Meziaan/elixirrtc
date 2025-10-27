@@ -1,4 +1,8 @@
 <div id="room" phx-hook="Room" data-room-id={@room_id} data-name={@name} class="h-full flex flex-col justify-center items-center gap-4 p-4">
+  <div id="join-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max-w-2xl" role="alert">
+    <strong class="font-bold">Error!</strong>
+    <span class="block sm:inline"></span>
+  </div>
   <div id="main-content" class="w-full flex flex-1 gap-4" style="min-height: 0;">
     <div class="flex-1 flex flex-col gap-4 h-full">
       <div id="presentation-layout" class="w-full h-full flex flex-col md:flex-row gap-2 hidden">

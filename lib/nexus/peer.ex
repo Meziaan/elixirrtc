@@ -110,24 +110,31 @@ defmodule Nexus.Peer do
     Logger.debug("Starting new peer #{id} in room #{room_id}")
     ice_port_range = Application.fetch_env!(:nexus, :ice_port_range)
     pc_opts = @opts ++ [ice_port_range: ice_port_range]
-    {:ok, pc} = PeerConnection.start_link(pc_opts)
-    Process.monitor(pc)
-    Logger.debug("Starting peer connection #{inspect(pc)}")
 
-    Process.link(channel)
+    case PeerConnection.start_link(pc_opts) do
+      {:ok, pc} ->
+        Process.monitor(pc)
+        Logger.debug("Starting peer connection #{inspect(pc)}")
 
-    state = %{
-      room_id: room_id,
-      id: id,
-      channel: channel,
-      pc: pc,
-      inbound_tracks: %{video: nil, audio: nil},
-      outbound_tracks: %{},
-      peer_tracks: %{},
-      pending_peers: MapSet.new()
-    }
+        Process.link(channel)
 
-    {:ok, state, {:continue, {:initial_offer, peer_ids}}}
+        state = %{
+          room_id: room_id,
+          id: id,
+          channel: channel,
+          pc: pc,
+          inbound_tracks: %{video: nil, audio: nil},
+          outbound_tracks: %{},
+          peer_tracks: %{},
+          pending_peers: MapSet.new()
+        }
+
+        {:ok, state, {:continue, {:initial_offer, peer_ids}}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start PeerConnection for peer #{id}: #{inspect(reason)}")
+        {:stop, {:normal, reason}}
+    end
   end
 
   @impl true
@@ -150,31 +157,37 @@ defmodule Nexus.Peer do
     answer = %SessionDescription{type: :answer, sdp: answer_sdp}
     Logger.debug("Applying SDP answer for #{state.id}:\n#{answer.sdp}")
 
-    state =
-      case PeerConnection.set_remote_description(pc, answer) do
-        :ok ->
+    case PeerConnection.set_remote_description(pc, answer) do
+      :ok ->
+        new_state =
           state
           |> subscribe_to_new_tracks()
           |> handle_pending_peers()
 
-        {:error, reason} ->
-          Logger.warning("Unable to apply SDP answer for #{state.id}: #{inspect(reason)}")
-          state
-      end
+        {:reply, :ok, new_state}
 
-    {:reply, :ok, state}
+      {:error, reason} ->
+        Logger.warning("Unable to apply SDP answer for #{state.id}: #{inspect(reason)}")
+        {:reply, {:error, reason}, state}
+    end
   end
 
   @impl true
   def handle_call({:add_ice_candidate, body}, _from, %{pc: pc} = state) do
-    candidate =
-      body
-      |> Jason.decode!()
-      |> ICECandidate.from_json()
-
-    :ok = PeerConnection.add_ice_candidate(pc, candidate)
-
-    {:reply, :ok, state}
+    case Jason.decode(body) do
+      {:ok, decoded_body} ->
+        candidate = ICECandidate.from_json(decoded_body)
+        case PeerConnection.add_ice_candidate(pc, candidate) do
+          :ok ->
+            {:reply, :ok, state}
+          {:error, reason} ->
+            Logger.warning("Unable to add ICE candidate for #{state.id}: #{inspect(reason)}")
+            {:reply, {:error, reason}, state}
+        end
+      {:error, reason} ->
+        Logger.warning("Failed to decode ICE candidate JSON for #{state.id}: #{inspect(reason)}")
+        {:reply, {:error, :invalid_json}, state}
+    end
   end
 
   @impl true
@@ -230,13 +243,25 @@ defmodule Nexus.Peer do
 
   @impl true
   def handle_info({:ex_webrtc, pc, {:ice_candidate, candidate}}, %{pc: pc} = state) do
-    body =
-      candidate
-      |> ICECandidate.to_json()
-      |> Jason.encode!()
-
-    :ok = PeerChannel.send_candidate(state.channel, body)
-
+    case ICECandidate.to_json(candidate) do
+      json_candidate ->
+        case Jason.encode(json_candidate) do
+          {:ok, body} ->
+            case PeerChannel.send_candidate(state.channel, body) do
+              :ok ->
+                :noreply
+              {:error, reason} -> # Assuming PeerChannel.send_candidate could return error
+                Logger.warning("Failed to send ICE candidate to channel for peer #{state.id}: #{inspect(reason)}")
+                :noreply
+            end
+          {:error, reason} ->
+            Logger.warning("Failed to encode ICE candidate to JSON for peer #{state.id}: #{inspect(reason)}")
+            :noreply
+        end
+      _ -> # ICECandidate.to_json might not return a tuple, so handle other cases
+        Logger.warning("Failed to convert ICE candidate to JSON for peer #{state.id}")
+        :noreply
+    end
     {:noreply, state}
   end
 
@@ -391,13 +416,16 @@ defmodule Nexus.Peer do
   end
 
   defp send_offer(%{pc: pc} = state) do
-    {:ok, offer} = PeerConnection.create_offer(pc)
-    Logger.debug("Sending SDP offer for #{state.id}:\n#{offer.sdp}")
-
-    :ok = PeerConnection.set_local_description(pc, offer)
-    :ok = PeerChannel.send_offer(state.channel, offer.sdp)
-
-    state
+    with {:ok, offer} <- PeerConnection.create_offer(pc),
+         :ok <- PeerConnection.set_local_description(pc, offer),
+         :ok <- PeerChannel.send_offer(state.channel, offer.sdp) do
+      Logger.debug("Sending SDP offer for #{state.id}:\n#{offer.sdp}")
+      state
+    else
+      {:error, reason} ->
+        Logger.warning("Failed to send SDP offer for #{state.id}: #{inspect(reason)}")
+        state # Return original state, don't crash
+    end
   end
 
   defp broadcast_packet(peer_tracks, track_kind, packet) do

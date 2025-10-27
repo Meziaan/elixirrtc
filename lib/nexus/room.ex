@@ -43,19 +43,25 @@ defmodule Nexus.Room do
     Logger.info("New peer #{id} added to room #{state.room_id}")
     peer_ids = Map.keys(state.peers)
 
-    {:ok, pid} = PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids)
-    Process.monitor(pid)
+    case PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids) do
+      {:ok, pid} ->
+        Process.monitor(pid)
 
-    peer_data = %{pid: pid, channel: channel_pid}
+        peer_data = %{pid: pid, channel: channel_pid}
 
-    state =
-      state
-      |> put_in([:pending_peers, id], peer_data)
-      |> put_in([:peer_pid_to_id, pid], id)
+        state =
+          state
+          |> put_in([:pending_peers, id], peer_data)
+          |> put_in([:peer_pid_to_id, pid], id)
 
-    Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
+        Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
 
-    {:reply, {:ok, id, state.shared_video}, state}
+        {:reply, {:ok, id, state.shared_video}, state}
+
+      {:error, reason} ->
+        Logger.error("Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}")
+        {:reply, {:error, :peer_start_failed}, state}
+    end
   end
 
   @impl true
