@@ -30,6 +30,7 @@ let peerId = null;
 let sharerId = null;
 let peerVideoElements = {}; // New map to store video elements per peer
 let localScreenShareVideoElement = null; // To hold the local screen share video element
+let sharedVideo = {player: null, hls: null};
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -513,13 +514,28 @@ async function joinChannel(roomId, name) {
       videoPlayer.autoplay = true;
       videoPlayer.className = 'w-full h-full object-contain';
 
+      if (isSharer) {
+        videoPlayer.addEventListener('play', () => {
+          channel.push('direct_video_state_change', { state: 'play', time: videoPlayer.currentTime });
+        });
+        videoPlayer.addEventListener('pause', () => {
+          channel.push('direct_video_state_change', { state: 'pause', time: videoPlayer.currentTime });
+        });
+        videoPlayer.addEventListener('seeked', () => {
+          channel.push('direct_video_state_change', { state: videoPlayer.paused ? 'pause' : 'play', time: videoPlayer.currentTime });
+        });
+      }
+
       if (url.endsWith('.m3u8') && Hls.isSupported()) {
         const hls = new Hls();
         hls.loadSource(url);
         hls.attachMedia(videoPlayer);
+        sharedVideo.hls = hls;
       } else {
         videoPlayer.src = url;
       }
+
+      sharedVideo.player = videoPlayer;
 
       startPresentation(videoPlayer);
 
@@ -529,12 +545,27 @@ async function joinChannel(roomId, name) {
       }
     });
 
+    channel.on('direct_video_state_change', (payload) => {
+      if (peerId !== sharerId && sharedVideo.player) {
+        sharedVideo.player.currentTime = payload.time;
+        if (payload.state === 'play') {
+          sharedVideo.player.play();
+        } else {
+          sharedVideo.player.pause();
+        }
+      }
+    });
+
     channel.on('video_share_stopped', () => {
       stopPresentation();
       if (youtubePlayer) {
         youtubePlayer.destroy();
         youtubePlayer = null;
       }
+      if (sharedVideo.hls) {
+        sharedVideo.hls.destroy();
+      }
+      sharedVideo = {player: null, hls: null};
       sharerId = null;
       document.getElementById('open-youtube-modal').classList.remove('hidden');
       document.getElementById('stop-sharing-button').classList.add('hidden');

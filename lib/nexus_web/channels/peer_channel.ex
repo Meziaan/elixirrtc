@@ -139,6 +139,16 @@ defmodule NexusWeb.PeerChannel do
     {:noreply, socket}
   end
 
+  def handle_in("direct_video_state_change", payload, socket) do
+    case Rooms.get_shared_video(socket.assigns.room_id) do
+      %{sharer_id: sharer_id} when sharer_id == socket.assigns.peer ->
+        broadcast_from!(socket, "direct_video_state_change", payload)
+      _ ->
+        :ok
+    end
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_in("screen_share_started", %{"sharer_id" => sharer_id}, socket) do
     Logger.info("Screen share started by #{sharer_id} in room #{socket.assigns.room_id}")
