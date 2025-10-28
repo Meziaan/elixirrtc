@@ -509,10 +509,18 @@ async function joinChannel(roomId, name) {
 
       const url = payload.url;
       const videoPlayer = document.createElement('video');
-      videoPlayer.src = url;
       videoPlayer.controls = isSharer;
       videoPlayer.autoplay = true;
       videoPlayer.className = 'w-full h-full object-contain';
+
+      if (url.endsWith('.m3u8') && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(videoPlayer);
+      } else {
+        videoPlayer.src = url;
+      }
+
       startPresentation(videoPlayer);
 
       document.getElementById('open-youtube-modal').classList.add('hidden');
@@ -771,8 +779,10 @@ function handleChatVisibility() {
         channel.push('share_youtube_video', { video_id: youtubeVideoId });
       } else if (url.match(/\.mp4$|\.webm$|\.ogg$/)) {
         channel.push('share_direct_video', { url: url });
+      } else if (url.match(/^https:\/\/www\.heales\.com\/video\//)) {
+        channel.push('share_heales_video', { url: url });
       } else {
-        alert('Please enter a valid YouTube or direct video URL.');
+        alert('Please enter a valid YouTube, direct video, or Heales video URL.');
       }
 
       youtubeUrlInput.value = ''; // Clear input

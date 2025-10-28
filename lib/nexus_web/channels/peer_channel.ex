@@ -89,6 +89,27 @@ defmodule NexusWeb.PeerChannel do
     {:noreply, socket}
   end
 
+  def handle_in("share_heales_video", %{"url" => url}, socket) do
+    Logger.info("Sharing Heales video: #{url} by #{socket.assigns.name}")
+    try do
+      uri = URI.parse(url)
+      query_params = URI.decode_query(uri.query)
+      case Map.get(query_params, "vid") do
+        nil ->
+          Logger.error("No vid parameter in Heales URL")
+        vid ->
+          # This URL format was discovered by inspecting the minified javascript on the Heales video page.
+          video_url = "https://www.heales.com/video/assets/videos/hls_output/" <> vid <> "/index.m3u8"
+          sharer_id = socket.assigns.peer
+          Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
+          broadcast!(socket, "new_direct_video", %{url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
+      end
+    rescue e ->
+      Logger.error("Failed to parse Heales URL: #{inspect(e)}")
+    end
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_in("stop_video_share", _, socket) do
     Rooms.clear_shared_video(socket.assigns.room_id)
