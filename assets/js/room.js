@@ -581,6 +581,7 @@ export const Room = {
 
     await createPeerConnection();
     await setupLocalMedia();
+    if (!localStream) return;
     joinChannel(roomId, name);
 
     loadYoutubeAPI();
