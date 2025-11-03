@@ -24,6 +24,8 @@ let channel = undefined;
 let pc = undefined;
 let localTracksAdded = false;
 let streamIdToPeerId = {};
+let midToPeerId = {};
+let unmappedTracks = {};
 let presences = {};
 let youtubePlayer = null;
 let peerId = null;
@@ -88,89 +90,129 @@ function stopPresentation() {
   updateVideoGrid();
 }
 
+function processTrack(event) {
+  const kind = event.track.kind;
+  if (kind !== 'video' && kind !== 'audio') {
+    console.log(`New track added: ${kind}`);
+    return;
+  }
+
+  let stream = event.streams[0];
+  let remotePeerId;
+
+  if (stream && streamIdToPeerId[stream.id]) {
+    remotePeerId = streamIdToPeerId[stream.id];
+  } else {
+    const mid = event.transceiver.mid;
+    if (midToPeerId[mid] && midToPeerId[mid].kind === kind) {
+      remotePeerId = midToPeerId[mid].peerId;
+      stream = new MediaStream([event.track]);
+      console.log(`Associated track with peer ${remotePeerId} via mid ${mid}`);
+    } else {
+      console.error(`Could not associate ${kind} track with any peer. Mid: ${mid}`, event);
+      return;
+    }
+  }
+
+  if (!remotePeerId) {
+    console.error(`Could not determine remote peer ID for track.`, event);
+    return;
+  }
+
+  if (kind === 'audio') {
+    console.log(`New audio track added for peer: ${remotePeerId}`);
+    const videoPlayer = peerVideoElements[remotePeerId]?.videoPlayer;
+    if (videoPlayer && videoPlayer.srcObject && !videoPlayer.srcObject.getAudioTracks().find(t => t.id === event.track.id)) {
+      videoPlayer.srcObject.addTrack(event.track);
+    }
+    return;
+  }
+
+  const userName = presences[remotePeerId]?.name || 'Guest';
+
+  let videoContainer = peerVideoElements[remotePeerId]?.videoContainer;
+  let videoPlayer = peerVideoElements[remotePeerId]?.videoPlayer;
+
+  if (!videoContainer) {
+    console.log(`Creating new video element for peer ${remotePeerId}`);
+    videoContainer = document.createElement('div');
+    videoContainer.id = `video-container-${remotePeerId}`;
+    videoContainer.className = 'relative';
+
+    videoPlayer = document.createElement('video');
+    videoPlayer.autoplay = true;
+    videoPlayer.playsInline = true;
+    videoPlayer.className = 'rounded-xl w-full h-full object-cover';
+    videoPlayer.id = `video-player-${remotePeerId}`;
+
+    const nameOverlay = document.createElement('div');
+    nameOverlay.id = `name-overlay-${remotePeerId}`;
+    nameOverlay.className = 'absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded';
+    nameOverlay.innerText = userName;
+
+    videoContainer.appendChild(videoPlayer);
+    videoContainer.appendChild(nameOverlay);
+
+    peerVideoElements[remotePeerId] = { videoContainer, videoPlayer, nameOverlay };
+  } else {
+    console.log(`Updating existing video element for peer ${remotePeerId}`);
+  }
+
+  if (videoPlayer.srcObject !== stream) {
+    videoPlayer.srcObject = stream;
+  }
+
+  console.log("pc.ontrack debug:", {
+    trackLabel: event.track.label,
+    remotePeerId: remotePeerId,
+    globalSharerId: sharerId
+  });
+
+  if (remotePeerId === sharerId) {
+    startPresentation(videoContainer);
+    console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
+  } else {
+    const targetContainer = presentationLayout.classList.contains('hidden')
+      ? videoPlayerWrapper
+      : filmstrip;
+
+    if (!videoPlayerWrapper.contains(videoContainer) && !filmstrip.contains(videoContainer)) {
+      targetContainer.appendChild(videoContainer);
+    }
+
+    if (targetContainer === videoPlayerWrapper) {
+      updateVideoGrid();
+    }
+  }
+
+  event.track.onended = (_) => {
+    console.log('Track ended: ' + event.track.label);
+    if (remotePeerId === sharerId) {
+      stopPresentation();
+    }
+  };
+}
+
 async function createPeerConnection() {
   pc = new RTCPeerConnection(pcConfig);
 
   pc.ontrack = (event) => {
-    if (event.track.kind == 'video') {
-      if (!event.streams || event.streams.length === 0 || !event.streams[0]) {
-        console.warn('Received video track without an associated stream.', event);
-        return;
-      }
-      const streamId = event.streams[0].id;
-      const remotePeerId = streamIdToPeerId[streamId];
-      const userName = presences[remotePeerId]?.name || 'Guest';
+    const mid = event.transceiver.mid;
+    const kind = event.track.kind;
 
-      let videoContainer = peerVideoElements[remotePeerId]?.videoContainer;
-      let videoPlayer = peerVideoElements[remotePeerId]?.videoPlayer;
-      let nameOverlay = peerVideoElements[remotePeerId]?.nameOverlay;
+    if (!mid) {
+      console.error("Track event without a mid, cannot process.", event);
+      return;
+    }
 
-      if (!videoContainer) {
-        console.log(`Creating new video element for peer ${remotePeerId}`);
-        videoContainer = document.createElement('div');
-        videoContainer.id = `video-container-${remotePeerId}`;
-        videoContainer.className = 'relative';
-
-        videoPlayer = document.createElement('video');
-        videoPlayer.autoplay = true;
-        videoPlayer.playsInline = true;
-        videoPlayer.className = 'rounded-xl w-full h-full object-cover';
-        videoPlayer.id = `video-player-${remotePeerId}`;
-
-        nameOverlay = document.createElement('div');
-        nameOverlay.id = `name-overlay-${remotePeerId}`;
-        nameOverlay.className = 'absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded';
-        nameOverlay.innerText = userName;
-
-        videoContainer.appendChild(videoPlayer);
-        videoContainer.appendChild(nameOverlay);
-
-        peerVideoElements[remotePeerId] = { videoContainer, videoPlayer, nameOverlay };
-      } else {
-        console.log(`Updating existing video element for peer ${remotePeerId}`);
-      }
-
-      videoPlayer.srcObject = event.streams[0];
-
-      console.log("pc.ontrack debug:", {
-        trackLabel: event.track.label,
-        remotePeerId: remotePeerId,
-        globalSharerId: sharerId
-      });
-
-      if (remotePeerId === sharerId) {
-        // This is the active screen share, put it in mainStage
-        startPresentation(videoContainer);
-        console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
-
-      } else {
-        // Regular camera feed or inactive screen share, add to videoPlayerWrapper
-        // Ensure it's not already in videoPlayerWrapper or filmstrip
-        if (!videoPlayerWrapper.contains(videoContainer) && !filmstrip.contains(videoContainer)) {
-          videoPlayerWrapper.appendChild(videoContainer);
-        }
-        updateVideoGrid();
-      }
-
-      event.track.onended = (_) => {
-        console.log('Track ended: ' + event.track.id);
-        // If the ended track was the main stage screen share, stop presentation
-        if (remotePeerId === sharerId) {
-          stopPresentation();
-        }
-        // Do NOT remove the container. It will be reused for the next track.
-        // The videoPlayer.srcObject will become null or inactive naturally.
-        // If a new track arrives for this peer, srcObject will be updated.
-        // If the peer leaves, the presence.onLeave handler will remove the container.
-      };
-    } else if (event.track.kind == 'audio') {
-      if (!event.streams || event.streams.length === 0 || !event.streams[0]) {
-        console.warn('Received audio track without an associated stream.', event);
-        return;
-      }
-      console.log('New audio track added for stream: ' + event.streams[0].id);
+    if (midToPeerId[mid] && midToPeerId[mid].kind === kind) {
+      processTrack(event);
     } else {
-      console.log('New track added: ' + event.track.kind);
+      console.log(`Buffering track with mid ${mid} because mid mapping is not yet known.`);
+      if (!unmappedTracks[mid]) {
+        unmappedTracks[mid] = [];
+      }
+      unmappedTracks[mid].push(event);
     }
   };
 
@@ -313,6 +355,19 @@ async function joinChannel(roomId, name) {
       channel.on('track_mapping', (payload) => {
         streamIdToPeerId[payload.stream_id] = payload.peer_id;
       });
+
+      channel.on('mid_mapping', (payload) => {
+        const { mid, peer_id, kind } = payload;
+        midToPeerId[mid] = { peerId: peer_id, kind: kind };
+        console.log(`Received mid mapping: mid ${mid} -> peer ${peer_id} (${kind})`);
+
+        // Process any buffered tracks for this mid
+        if (unmappedTracks[mid]) {
+          console.log(`Processing ${unmappedTracks[mid].length} buffered tracks for mid ${mid}`);
+          unmappedTracks[mid].forEach(event => processTrack(event));
+          delete unmappedTracks[mid];
+        }
+      });
     
       const presence = new Presence(channel);
     
@@ -363,6 +418,7 @@ async function joinChannel(roomId, name) {
             pc.close();
             pc = null; // Clear the reference
             localTracksAdded = false; // Reset flag for adding tracks
+            unmappedTracks = {}; // Clear unmapped tracks on rejoin
           }
 
           // Recreate PeerConnection

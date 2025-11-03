@@ -423,14 +423,35 @@ defmodule Nexus.Peer do
 
   defp send_offer(%{pc: pc} = state) do
     with {:ok, offer} <- PeerConnection.create_offer(pc),
-         :ok <- PeerConnection.set_local_description(pc, offer),
-         :ok <- PeerChannel.send_offer(state.channel, offer.sdp) do
-      Logger.debug("Sending SDP offer for #{state.id}:\n#{offer.sdp}")
-      state
+         :ok <- PeerConnection.set_local_description(pc, offer) do
+
+      transceivers = PeerConnection.get_transceivers(pc)
+      tr_to_peer =
+        for {peer_id, outbound_spec} <- state.outbound_tracks,
+            {kind, tr_id} <- outbound_spec.transceivers,
+            into: %{} do
+          {tr_id, {peer_id, kind}}
+        end
+
+      for tr <- transceivers do
+        if Map.has_key?(tr_to_peer, tr.id) do
+          {peer_id, kind} = tr_to_peer[tr.id]
+          :ok = PeerChannel.send_mid_mapping(state.channel, peer_id, tr.mid, kind)
+        end
+      end
+
+      case PeerChannel.send_offer(state.channel, offer.sdp) do
+        :ok ->
+          Logger.debug("Sending SDP offer for #{state.id}:\n#{offer.sdp}")
+          state
+        {:error, reason} ->
+          Logger.warning("Failed to send SDP offer for #{state.id}: #{inspect(reason)}")
+          state
+      end
     else
       {:error, reason} ->
-        Logger.warning("Failed to send SDP offer for #{state.id}: #{inspect(reason)}")
-        state # Return original state, don't crash
+        Logger.warning("Failed to create or set SDP offer for #{state.id}: #{inspect(reason)}")
+        state
     end
   end
 

@@ -23,6 +23,11 @@ defmodule NexusWeb.PeerChannel do
     GenServer.cast(channel, {:track_mapping, peer_id, stream_id})
   end
 
+  @spec send_mid_mapping(pid(), Peer.id(), String.t(), atom()) :: :ok
+  def send_mid_mapping(channel, peer_id, mid, kind) do
+    GenServer.cast(channel, {:mid_mapping, peer_id, mid, kind})
+  end
+
   @spec close(GenServer.server()) :: :ok
   def close(channel) do
     try do
@@ -54,8 +59,13 @@ defmodule NexusWeb.PeerChannel do
 
   @impl true
   def handle_in("sdp_answer", %{"body" => body}, socket) do
-    :ok = Peer.apply_sdp_answer(socket.assigns.peer, body)
-    {:noreply, socket}
+    case Peer.apply_sdp_answer(socket.assigns.peer, body) do
+      :ok ->
+        {:noreply, socket}
+      {:error, reason} ->
+        Logger.warning("Failed to apply SDP answer for peer #{socket.assigns.peer}: #{inspect(reason)}")
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -192,16 +202,25 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
+  def handle_cast({:mid_mapping, peer_id, mid, kind}, socket) do
+    push(socket, "mid_mapping", %{peer_id: peer_id, mid: mid, kind: kind})
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info({:after_join, shared_video}, socket) do
-    if shared_video do
-      case shared_video.type do
-        :youtube ->
-          push(socket, "youtube_video_shared", %{video_id: shared_video.id, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
-        :direct ->
-          push(socket, "new_direct_video", %{url: shared_video.url, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
-        :screen_share ->
-          push(socket, "screen_share_started", %{sharer_id: shared_video.sharer_id})
-      end
+    # We now pattern match on the map structure to ensure it's what we expect.
+    # This prevents crashes if `shared_video` is truthy but not a map with the :type key.
+    case shared_video do
+      %{type: :youtube} ->
+        push(socket, "youtube_video_shared", %{video_id: shared_video.id, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+      %{type: :direct} ->
+        push(socket, "new_direct_video", %{url: shared_video.url, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+      %{type: :screen_share} ->
+        push(socket, "screen_share_started", %{sharer_id: shared_video.sharer_id})
+      _ ->
+        # If shared_video is nil, an empty map, or has the wrong shape, do nothing.
+        :ok
     end
 
     {:ok, _ref} = Presence.track(socket, socket.assigns.peer, %{name: socket.assigns.name})
