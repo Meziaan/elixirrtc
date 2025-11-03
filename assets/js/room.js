@@ -99,19 +99,20 @@ function processTrack(event) {
 
   let stream = event.streams[0];
   let remotePeerId;
+  const mid = event.transceiver.mid;
 
-  if (stream && streamIdToPeerId[stream.id]) {
+  if (midToPeerId[mid] && midToPeerId[mid].kind === kind) {
+    remotePeerId = midToPeerId[mid].peerId;
+    if (!stream) {
+      stream = new MediaStream([event.track]);
+    }
+    console.log(`Associated track with peer ${remotePeerId} via mid ${mid}`);
+  } else if (stream && streamIdToPeerId[stream.id]) {
+    // Fallback to stream ID mapping
     remotePeerId = streamIdToPeerId[stream.id];
   } else {
-    const mid = event.transceiver.mid;
-    if (midToPeerId[mid] && midToPeerId[mid].kind === kind) {
-      remotePeerId = midToPeerId[mid].peerId;
-      stream = new MediaStream([event.track]);
-      console.log(`Associated track with peer ${remotePeerId} via mid ${mid}`);
-    } else {
-      console.error(`Could not associate ${kind} track with any peer. Mid: ${mid}`, event);
-      return;
-    }
+    console.error(`Could not associate ${kind} track with any peer. Mid: ${mid}`, event);
+    return;
   }
 
   if (!remotePeerId) {
@@ -441,11 +442,11 @@ async function joinChannel(roomId, name) {
           if (resp && resp.shared_video) {
             const video = resp.shared_video;
             if (video.type === 'youtube') {
-              channel.trigger('youtube_video_shared', { video_id: video.id, sender: video.sender, sharer_id: video.sharer_id });
+              channel.trigger('youtube_video_shared', video);
             } else if (video.type === 'direct') {
-              channel.trigger('new_direct_video', { url: video.url, sender: video.sender, sharer_id: video.sharer_id });
+              channel.trigger('new_direct_video', video);
             } else if (video.type === 'screen_share') {
-              channel.trigger('screen_share_started', { sharer_id: video.sharer_id });
+              channel.trigger('screen_share_started', video);
             }
           }
 
@@ -481,7 +482,8 @@ async function joinChannel(roomId, name) {
     
         channel.on('youtube_video_shared', (payload) => {
           sharerId = payload.sharer_id;
-          const videoId = payload.video_id;
+          const videoId = payload.id; // Changed from video_id
+          const isSharer = peerId === sharerId;
 
           const wrapper = document.createElement('div');
           wrapper.style.position = 'relative';
@@ -493,8 +495,6 @@ async function joinChannel(roomId, name) {
           playerDiv.className = 'w-full h-full';
           wrapper.appendChild(playerDiv);
         
-          const isSharer = peerId === sharerId;
-
           if (!isSharer) {
             const overlay = document.createElement('div');
             overlay.style.position = 'absolute';
@@ -523,6 +523,14 @@ async function joinChannel(roomId, name) {
                     state: event.data,
                     time: event.target.getCurrentTime(),
                   });
+                } else {
+                  // For late joiners, sync the player state
+                  event.target.seekTo(payload.time, true);
+                  if (payload.player_state === 1) { // Playing
+                    event.target.playVideo();
+                  } else if (payload.player_state === 2) { // Paused
+                    event.target.pauseVideo();
+                  }
                 }
               },
               onStateChange: (event) => {

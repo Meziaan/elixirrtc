@@ -49,6 +49,15 @@ defmodule Nexus.Room do
 
         peer_data = %{pid: pid, channel: channel_pid}
 
+        shared_video_for_new_peer = 
+          if state.shared_video && state.shared_video.type == :youtube && state.shared_video.player_state == 1 do
+            time_diff_ms = :os.system_time(:millisecond) - state.shared_video.last_updated
+            new_time = state.shared_video.time + time_diff_ms / 1000.0
+            %{state.shared_video | time: new_time}
+          else
+            state.shared_video
+          end
+
         state =
           state
           |> put_in([:pending_peers, id], peer_data)
@@ -56,7 +65,7 @@ defmodule Nexus.Room do
 
         Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
 
-        {:reply, {:ok, id, state.shared_video}, state}
+        {:reply, {:ok, id, shared_video_for_new_peer}, state}
 
       {:error, reason} ->
         Logger.error("Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}")
@@ -85,7 +94,27 @@ defmodule Nexus.Room do
 
   @impl true
   def handle_call({:set_shared_video, video}, _from, state) do
-    {:reply, :ok, %{state | shared_video: video}}
+    video_with_state = 
+      case video do
+        %{type: :youtube} -> Map.merge(video, %{player_state: 1, time: 0, last_updated: :os.system_time(:millisecond)})
+        _ -> video
+      end
+    {:reply, :ok, %{state | shared_video: video_with_state}}
+  end
+
+  @impl true
+  def handle_call({:update_video_state, %{"state" => player_state, "time" => time}}, _from, state) do
+    new_shared_video = 
+      if state.shared_video do
+        state.shared_video
+        |> Map.put(:player_state, player_state)
+        |> Map.put(:time, time)
+        |> Map.put(:last_updated, :os.system_time(:millisecond))
+      else
+        nil
+      end
+      
+    {:reply, :ok, %{state | shared_video: new_shared_video}}
   end
 
   @impl true

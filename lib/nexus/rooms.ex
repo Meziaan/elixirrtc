@@ -35,6 +35,12 @@ defmodule Nexus.Rooms do
     end
   end
 
+  def update_video_state(room_id, payload) do
+    with {:ok, room_pid} <- find_or_start_room(room_id) do
+      GenServer.call(room_pid, {:update_video_state, payload})
+    end
+  end
+
   defp find_or_start_room(room_id) do
     case Registry.lookup(Nexus.RoomRegistry, room_id) do
       [{pid, _}] ->

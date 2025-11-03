@@ -85,8 +85,10 @@ defmodule NexusWeb.PeerChannel do
   def handle_in("share_youtube_video", %{"video_id" => video_id}, socket) do
     Logger.info("Shared YouTube video: #{video_id} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
-    Rooms.set_shared_video(socket.assigns.room_id, %{type: :youtube, id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
-    broadcast!(socket, "youtube_video_shared", %{video_id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
+    video_spec = %{type: :youtube, id: video_id, sender: socket.assigns.name, sharer_id: sharer_id}
+    :ok = Rooms.set_shared_video(socket.assigns.room_id, video_spec)
+    full_video_spec = Rooms.get_shared_video(socket.assigns.room_id)
+    broadcast!(socket, "youtube_video_shared", full_video_spec)
     {:noreply, socket}
   end
 
@@ -142,6 +144,7 @@ defmodule NexusWeb.PeerChannel do
   def handle_in("player_state_change", payload, socket) do
     case Rooms.get_shared_video(socket.assigns.room_id) do
       %{sharer_id: sharer_id} when sharer_id == socket.assigns.peer ->
+        Rooms.update_video_state(socket.assigns.room_id, payload)
         broadcast_from!(socket, "player_state_change", payload)
       _ ->
         :ok
@@ -213,11 +216,11 @@ defmodule NexusWeb.PeerChannel do
     # This prevents crashes if `shared_video` is truthy but not a map with the :type key.
     case shared_video do
       %{type: :youtube} ->
-        push(socket, "youtube_video_shared", %{video_id: shared_video.id, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+        push(socket, "youtube_video_shared", shared_video)
       %{type: :direct} ->
-        push(socket, "new_direct_video", %{url: shared_video.url, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+        push(socket, "new_direct_video", shared_video)
       %{type: :screen_share} ->
-        push(socket, "screen_share_started", %{sharer_id: shared_video.sharer_id})
+        push(socket, "screen_share_started", shared_video)
       _ ->
         # If shared_video is nil, an empty map, or has the wrong shape, do nothing.
         :ok
