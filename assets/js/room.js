@@ -41,7 +41,8 @@ let currentColor = '#FFFFFF'; // Default to white
 let currentLineThickness = 5;
 let isEraserMode = false;
 let drawingToolbar = null;
-let toggleDrawingButton = null;
+let toggleWhiteboardButton = null;
+let isWhiteboardActive = false;
 let lastX = 0;
 let lastY = 0;
 
@@ -63,7 +64,6 @@ function extractYoutubeVideoId(url) {
 function startPresentation(contentElement) {
   presentationLayout.classList.remove('hidden');
   videoPlayerWrapper.classList.add('hidden');
-  toggleDrawingButton.classList.remove('hidden'); // Show drawing button
 
   // Move all video elements from videoPlayerWrapper to the filmstrip
   // Include localVideoPlayer if it's not hidden
@@ -90,10 +90,10 @@ function startPresentation(contentElement) {
 function stopPresentation() {
   presentationLayout.classList.add('hidden');
   videoPlayerWrapper.classList.remove('hidden');
-  toggleDrawingButton.classList.add('hidden'); // Hide drawing button
   drawingToolbar.classList.add('hidden'); // Hide drawing toolbar
   drawingCanvas.style.pointerEvents = 'none'; // Disable drawing
   clearCanvas(); // Clear canvas when presentation stops
+  mainStage.style.backgroundColor = 'black'; // Reset background
 
   // Move all video elements from filmstrip back to the grid
   Array.from(filmstrip.children).forEach(child => {
@@ -821,7 +821,7 @@ export const Room = {
     drawingCanvas = document.getElementById('drawing-canvas');
     drawingContext = drawingCanvas.getContext('2d');
     drawingToolbar = document.getElementById('drawing-toolbar');
-    toggleDrawingButton = document.getElementById('toggle-drawing');
+    toggleWhiteboardButton = document.getElementById('toggle-whiteboard');
 
     // Set initial canvas size
     window.addEventListener('resize', resizeCanvas);
@@ -854,19 +854,31 @@ export const Room = {
       channel.push('draw_event', { type: 'clear' }); // Broadcast clear event
     });
 
-    // Toggle Drawing Mode
-    toggleDrawingButton.addEventListener('click', () => {
-      const isActive = drawingToolbar.classList.toggle('hidden');
-      if (isActive) {
-        drawingCanvas.style.pointerEvents = 'none'; // Disable drawing
-      } else {
-        drawingCanvas.style.pointerEvents = 'auto'; // Enable drawing
-      }
+    // Toggle Whiteboard Mode
+    toggleWhiteboardButton.addEventListener('click', () => {
+      isWhiteboardActive = !isWhiteboardActive;
+      channel.push('whiteboard_toggled', { active: isWhiteboardActive });
     });
 
     // Listen for drawing events
     channel.on('draw_event', (payload) => {
       drawRemoteEvent(payload);
+    });
+
+    // Listen for whiteboard events
+    channel.on('whiteboard_toggled', (payload) => {
+      isWhiteboardActive = payload.active;
+      if (isWhiteboardActive) {
+        // Create a dummy element to pass to startPresentation
+        const dummyElement = document.createElement('div');
+        dummyElement.id = 'whiteboard-container';
+        startPresentation(dummyElement);
+        mainStage.style.backgroundColor = 'white';
+        drawingToolbar.classList.remove('hidden');
+        drawingCanvas.style.pointerEvents = 'auto';
+      } else {
+        stopPresentation();
+      }
     });
 
     loadYoutubeAPI();

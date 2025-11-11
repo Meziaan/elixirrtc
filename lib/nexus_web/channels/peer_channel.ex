@@ -147,6 +147,19 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
+  def handle_in("whiteboard_toggled", %{"active" => active}, socket) do
+    if active do
+      sharer_id = socket.assigns.peer
+      Rooms.set_shared_video(socket.assigns.room_id, %{type: :whiteboard, sharer_id: sharer_id})
+    else
+      Rooms.clear_shared_video(socket.assigns.room_id)
+    end
+
+    broadcast!(socket, "whiteboard_toggled", %{active: active})
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_in("player_state_change", payload, socket) do
     case Rooms.get_shared_video(socket.assigns.room_id) do
       %{sharer_id: sharer_id} when sharer_id == socket.assigns.peer ->
@@ -227,6 +240,8 @@ defmodule NexusWeb.PeerChannel do
         push(socket, "new_direct_video", shared_video)
       %{type: :screen_share} ->
         push(socket, "screen_share_started", shared_video)
+      %{type: :whiteboard} ->
+        push(socket, "whiteboard_toggled", %{active: true})
       _ ->
         # If shared_video is nil, an empty map, or has the wrong shape, do nothing.
         :ok
