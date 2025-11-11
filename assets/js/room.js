@@ -73,11 +73,18 @@ function startPresentation(contentElement) {
     }
   });
 
-  mainStage.innerHTML = ''; // Clear any previous content (e.g., YouTube iframe)
+  // Clear previous content but preserve the canvas
+  Array.from(mainStage.children).forEach(child => {
+    if (child.id !== 'drawing-canvas') {
+      mainStage.removeChild(child);
+    }
+  });
+
   if (contentElement.parentNode) {
     contentElement.parentNode.removeChild(contentElement);
   }
-  mainStage.appendChild(contentElement);
+  mainStage.prepend(contentElement); // Prepend to keep canvas on top
+  resizeCanvas();
 }
 
 function stopPresentation() {
@@ -696,7 +703,14 @@ function updateVideoGrid() {
   videoPlayerWrapper.className = `w-full h-full grid gap-2 p-2 auto-rows-fr ${columns}`;
 }
 
+function resizeCanvas() {
+  if (!drawingCanvas || !mainStage) return;
+  drawingCanvas.width = mainStage.clientWidth;
+  drawingCanvas.height = mainStage.clientHeight;
+}
+
 function startDrawing(event) {
+  console.log("startDrawing called. isDrawing:", isDrawing, "drawingContext:", drawingContext, "toolbar hidden:", drawingToolbar.classList.contains('hidden'), "event.offsetX:", event.offsetX, "event.offsetY:", event.offsetY);
   if (!drawingContext || drawingToolbar.classList.contains('hidden')) return;
   event.stopPropagation();
   isDrawing = true;
@@ -719,6 +733,7 @@ function startDrawing(event) {
 }
 
 function draw(event) {
+  console.log("draw called. isDrawing:", isDrawing, "drawingContext:", drawingContext, "toolbar hidden:", drawingToolbar.classList.contains('hidden'), "event.offsetX:", event.offsetX, "event.offsetY:", event.offsetY);
   if (!isDrawing || !drawingContext || drawingToolbar.classList.contains('hidden')) return;
   drawingContext.lineTo(event.offsetX, event.offsetY);
   drawingContext.lineWidth = currentLineThickness;
@@ -809,11 +824,6 @@ export const Room = {
     toggleDrawingButton = document.getElementById('toggle-drawing');
 
     // Set initial canvas size
-    const mainStage = document.getElementById('main-stage');
-    const resizeCanvas = () => {
-      drawingCanvas.width = mainStage.clientWidth;
-      drawingCanvas.height = mainStage.clientHeight;
-    };
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas(); // Initial sizing
 
