@@ -141,6 +141,12 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
+  def handle_in("draw_event", payload, socket) do
+    broadcast_from!(socket, "draw_event", payload)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_in("player_state_change", payload, socket) do
     case Rooms.get_shared_video(socket.assigns.room_id) do
       %{sharer_id: sharer_id} when sharer_id == socket.assigns.peer ->

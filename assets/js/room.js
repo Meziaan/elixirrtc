@@ -34,6 +34,17 @@ let peerVideoElements = {}; // New map to store video elements per peer
 let localScreenShareVideoElement = null; // To hold the local screen share video element
 let sharedVideo = {player: null, hls: null};
 
+let drawingCanvas = null;
+let drawingContext = null;
+let isDrawing = false;
+let currentColor = '#FFFFFF'; // Default to white
+let currentLineThickness = 5;
+let isEraserMode = false;
+let drawingToolbar = null;
+let toggleDrawingButton = null;
+let lastX = 0;
+let lastY = 0;
+
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
@@ -52,6 +63,7 @@ function extractYoutubeVideoId(url) {
 function startPresentation(contentElement) {
   presentationLayout.classList.remove('hidden');
   videoPlayerWrapper.classList.add('hidden');
+  toggleDrawingButton.classList.remove('hidden'); // Show drawing button
 
   // Move all video elements from videoPlayerWrapper to the filmstrip
   // Include localVideoPlayer if it's not hidden
@@ -71,6 +83,10 @@ function startPresentation(contentElement) {
 function stopPresentation() {
   presentationLayout.classList.add('hidden');
   videoPlayerWrapper.classList.remove('hidden');
+  toggleDrawingButton.classList.add('hidden'); // Hide drawing button
+  drawingToolbar.classList.add('hidden'); // Hide drawing toolbar
+  drawingCanvas.style.pointerEvents = 'none'; // Disable drawing
+  clearCanvas(); // Clear canvas when presentation stops
 
   // Move all video elements from filmstrip back to the grid
   Array.from(filmstrip.children).forEach(child => {
@@ -170,6 +186,14 @@ function processTrack(event) {
   });
 
   if (remotePeerId === sharerId) {
+    videoPlayer.muted = true;
+    videoPlayer.onclick = () => {
+      console.log("Forcing video refresh for remote peer");
+      const stream = videoPlayer.srcObject;
+      videoPlayer.srcObject = null;
+      videoPlayer.srcObject = stream;
+      videoPlayer.play().catch(e => console.warn("Play failed after refresh", e));
+    };
     startPresentation(videoContainer);
     console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
   } else {
@@ -672,6 +696,97 @@ function updateVideoGrid() {
   videoPlayerWrapper.className = `w-full h-full grid gap-2 p-2 auto-rows-fr ${columns}`;
 }
 
+function startDrawing(event) {
+  if (!drawingContext || drawingToolbar.classList.contains('hidden')) return;
+  event.stopPropagation();
+  isDrawing = true;
+  lastX = event.offsetX;
+  lastY = event.offsetY;
+  drawingContext.beginPath();
+  drawingContext.moveTo(lastX, lastY);
+
+  channel.push('draw_event', {
+    type: 'draw',
+    x: lastX,
+    y: lastY,
+    color: currentColor,
+    thickness: currentLineThickness,
+    eraser: isEraserMode,
+    drawing: true,
+    prevX: null, // Indicate start of new line
+    prevY: null
+  });
+}
+
+function draw(event) {
+  if (!isDrawing || !drawingContext || drawingToolbar.classList.contains('hidden')) return;
+  drawingContext.lineTo(event.offsetX, event.offsetY);
+  drawingContext.lineWidth = currentLineThickness;
+  drawingContext.lineCap = 'round';
+  drawingContext.lineJoin = 'round';
+  drawingContext.stroke();
+
+  // Send drawing data
+  channel.push('draw_event', {
+    type: 'draw',
+    x: event.offsetX,
+    y: event.offsetY,
+    color: currentColor,
+    thickness: currentLineThickness,
+    eraser: isEraserMode,
+    drawing: true,
+    prevX: lastX,
+    prevY: lastY
+  });
+
+  lastX = event.offsetX;
+  lastY = event.offsetY;
+}
+
+function stopDrawing() {
+  isDrawing = false;
+  if (drawingContext) {
+    drawingContext.closePath();
+  }
+  // Send a 'stop drawing' event
+  channel.push('draw_event', { type: 'draw', drawing: false });
+}
+
+function clearCanvas() {
+  if (!drawingContext) return;
+  drawingContext.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+}
+
+// Function to draw remote events
+function drawRemoteEvent(data) {
+  if (!drawingContext) return;
+
+  if (data.type === 'clear') {
+    clearCanvas();
+    return;
+  }
+
+  if (data.drawing) {
+    drawingContext.strokeStyle = data.color;
+    drawingContext.lineWidth = data.thickness;
+    drawingContext.lineCap = 'round';
+    drawingContext.lineJoin = 'round';
+    drawingContext.globalCompositeOperation = data.eraser ? 'destination-out' : 'source-over';
+
+    if (data.prevX === null || data.prevY === null) { // Start of a new line segment
+      drawingContext.beginPath();
+      drawingContext.moveTo(data.x, data.y);
+    } else {
+      drawingContext.beginPath(); // Start new path for each segment
+      drawingContext.moveTo(data.prevX, data.prevY);
+      drawingContext.lineTo(data.x, data.y);
+      drawingContext.stroke();
+    }
+  } else { // End of drawing
+    drawingContext.closePath();
+  }
+}
+
 export const Room = {
   isScreenSharing: false,
   screenShareStream: null,
@@ -686,6 +801,63 @@ export const Room = {
     await setupLocalMedia();
     if (!localStream) return;
     joinChannel(roomId, name);
+
+    // Drawing Feature Initialization
+    drawingCanvas = document.getElementById('drawing-canvas');
+    drawingContext = drawingCanvas.getContext('2d');
+    drawingToolbar = document.getElementById('drawing-toolbar');
+    toggleDrawingButton = document.getElementById('toggle-drawing');
+
+    // Set initial canvas size
+    const mainStage = document.getElementById('main-stage');
+    const resizeCanvas = () => {
+      drawingCanvas.width = mainStage.clientWidth;
+      drawingCanvas.height = mainStage.clientHeight;
+    };
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas(); // Initial sizing
+
+    // Drawing event listeners
+    drawingCanvas.addEventListener('mousedown', startDrawing);
+    drawingCanvas.addEventListener('mousemove', draw);
+    drawingCanvas.addEventListener('mouseup', stopDrawing);
+    drawingCanvas.addEventListener('mouseout', stopDrawing);
+
+    // Toolbar event listeners
+    document.querySelectorAll('.color-btn').forEach(button => {
+      button.addEventListener('click', (event) => {
+        currentColor = event.target.dataset.color;
+        isEraserMode = false;
+        drawingContext.strokeStyle = currentColor;
+        drawingContext.globalCompositeOperation = 'source-over';
+      });
+    });
+
+    document.getElementById('eraser-btn').addEventListener('click', () => {
+      isEraserMode = true;
+      drawingContext.globalCompositeOperation = 'destination-out'; // Erase effect
+      drawingContext.strokeStyle = 'rgba(0,0,0,1)'; // Color doesn't matter for eraser, but needs to be set
+    });
+
+    document.getElementById('clear-canvas-btn').addEventListener('click', () => {
+      clearCanvas();
+      channel.push('draw_event', { type: 'clear' }); // Broadcast clear event
+    });
+
+    // Toggle Drawing Mode
+    toggleDrawingButton.addEventListener('click', () => {
+      const isActive = drawingToolbar.classList.toggle('hidden');
+      if (isActive) {
+        drawingCanvas.style.pointerEvents = 'none'; // Disable drawing
+      } else {
+        drawingCanvas.style.pointerEvents = 'auto'; // Enable drawing
+      }
+    });
+
+    // Listen for drawing events
+    channel.on('draw_event', (payload) => {
+      drawRemoteEvent(payload);
+    });
 
     loadYoutubeAPI();
 
@@ -932,8 +1104,17 @@ function handleChatVisibility() {
     videoPlayer.srcObject = this.screenShareStream;
     videoPlayer.autoplay = true;
     videoPlayer.playsInline = true;
+    videoPlayer.muted = true;
     videoPlayer.className = 'w-full h-full object-contain';
     videoPlayer.id = `local-screen-share-video-player`;
+
+    videoPlayer.onclick = () => {
+      console.log("Forcing video refresh for local screen share");
+      const stream = videoPlayer.srcObject;
+      videoPlayer.srcObject = null;
+      videoPlayer.srcObject = stream;
+      videoPlayer.play().catch(e => console.warn("Play failed after refresh", e));
+    };
 
     const nameOverlay = document.createElement('div');
     nameOverlay.id = `name-overlay-local-screen-share`;

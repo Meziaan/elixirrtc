@@ -10,8 +10,23 @@
   <div id="main-content" class="w-full flex flex-1 gap-4" style="min-height: 0;">
     <div class="flex-1 flex flex-col gap-4 h-full">
       <div id="presentation-layout" class="w-full h-full flex flex-col md:flex-row gap-2 hidden">
+        <!-- Drawing Toolbar (hidden by default) -->
+        <div id="drawing-toolbar" class="hidden flex flex-col gap-2 p-2 bg-gray-800 bg-opacity-75 rounded-lg">
+            <button data-color="#FFFFFF" class="color-btn h-8 w-8 rounded-full bg-white border-2 border-blue-500" title="White"></button>
+            <button data-color="#EF4444" class="color-btn h-8 w-8 rounded-full bg-red-500" title="Red"></button>
+            <button data-color="#3B82F6" class="color-btn h-8 w-8 rounded-full bg-blue-500" title="Blue"></button>
+            <button data-color="#22C55E" class="color-btn h-8 w-8 rounded-full bg-green-500" title="Green"></button>
+            <button data-color="#EAB308" class="color-btn h-8 w-8 rounded-full bg-yellow-500" title="Yellow"></button>
+            <button id="eraser-btn" class="p-1 rounded-full text-white hover:bg-gray-600" title="Eraser">
+                <.icon name="hero-eraser-solid" class="h-6 w-6" />
+            </button>
+            <button id="clear-canvas-btn" class="p-1 rounded-full text-white hover:bg-gray-600" title="Clear Canvas">
+                <.icon name="hero-trash-solid" class="h-6 w-6" />
+            </button>
+        </div>
         <div id="main-stage" class="flex-1 bg-black rounded-xl relative overflow-hidden">
           <!-- Shared video will be injected here -->
+          <canvas id="drawing-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
         </div>
         <div id="filmstrip" class="w-full md:w-48 flex flex-row md:flex-col gap-2 overflow-y-auto"></div>
       </div>
@@ -84,6 +99,10 @@
     <button id="toggle-chat" class="relative bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full" title="Toggle Chat">
       <.icon name="hero-chat-bubble-left-right-solid" class="h-6 w-6" />
       <span id="chat-notification-badge" class="absolute top-0 right-0 h-4 w-4 bg-red-500 text-white text-xs rounded-full hidden"></span>
+    </button>
+
+    <button id="toggle-drawing" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden" title="Toggle Drawing">
+      <.icon name="hero-paint-brush-solid" class="h-6 w-6" />
     </button>
 
   </div>
