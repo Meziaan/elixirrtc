@@ -43,6 +43,7 @@ let isEraserMode = false;
 let drawingToolbar = null;
 let toggleWhiteboardButton = null;
 let isWhiteboardActive = false;
+let isDrawingModeActive = false;
 let lastX = 0;
 let lastY = 0;
 
@@ -64,9 +65,9 @@ function extractYoutubeVideoId(url) {
 function startPresentation(contentElement) {
   presentationLayout.classList.remove('hidden');
   videoPlayerWrapper.classList.add('hidden');
+  disableDrawingMode(); // Always start with drawing mode off
 
   // Move all video elements from videoPlayerWrapper to the filmstrip
-  // Include localVideoPlayer if it's not hidden
   Array.from(videoPlayerWrapper.children).forEach(child => {
     if (child.id.startsWith('video-container-') || child.id === 'video-container-local') {
       filmstrip.appendChild(child);
@@ -80,18 +81,19 @@ function startPresentation(contentElement) {
     }
   });
 
-  if (contentElement.parentNode) {
+  if (contentElement && contentElement.parentNode) {
     contentElement.parentNode.removeChild(contentElement);
   }
-  mainStage.prepend(contentElement); // Prepend to keep canvas on top
+  if (contentElement) {
+    mainStage.prepend(contentElement); // Prepend to keep canvas on top
+  }
   resizeCanvas();
 }
 
 function stopPresentation() {
   presentationLayout.classList.add('hidden');
   videoPlayerWrapper.classList.remove('hidden');
-  drawingToolbar.classList.add('hidden'); // Hide drawing toolbar
-  drawingCanvas.style.pointerEvents = 'none'; // Disable drawing
+  disableDrawingMode(); // Ensure drawing is off when presentation stops
   clearCanvas(); // Clear canvas when presentation stops
   mainStage.style.backgroundColor = 'black'; // Reset background
 
@@ -102,14 +104,13 @@ function stopPresentation() {
     }
   });
 
-  // Move the video element from mainStage back to videoPlayerWrapper if it's a video container
-  if (mainStage.firstChild && mainStage.firstChild.id && 
-      (mainStage.firstChild.id.startsWith('video-container-') || mainStage.firstChild.id === 'local-screen-share-video-container')) {
-    videoPlayerWrapper.appendChild(mainStage.firstChild);
-  } else {
-    // If it was a YouTube iframe or other non-reusable content, just clear it
-    mainStage.innerHTML = '';
-  }
+  // Clear previous content but preserve the canvas
+  Array.from(mainStage.children).forEach(child => {
+    if (child.id !== 'drawing-canvas') {
+        mainStage.removeChild(child);
+    }
+  });
+
   updateVideoGrid();
 }
 
@@ -709,9 +710,26 @@ function resizeCanvas() {
   drawingCanvas.height = mainStage.clientHeight;
 }
 
+function enableDrawingMode() {
+  if (!drawingContext) return;
+  isDrawingModeActive = true;
+  drawingToolbar.classList.remove('hidden');
+  drawingCanvas.style.pointerEvents = 'auto';
+
+  // Restore context after potential resize/reset
+  drawingContext.strokeStyle = currentColor;
+  drawingContext.lineWidth = currentLineThickness;
+  drawingContext.globalCompositeOperation = isEraserMode ? 'destination-out' : 'source-over';
+}
+
+function disableDrawingMode() {
+  isDrawingModeActive = false;
+  if (drawingToolbar) drawingToolbar.classList.add('hidden');
+  if (drawingCanvas) drawingCanvas.style.pointerEvents = 'none';
+}
+
 function startDrawing(event) {
-  console.log("startDrawing called. isDrawing:", isDrawing, "drawingContext:", drawingContext, "toolbar hidden:", drawingToolbar.classList.contains('hidden'), "event.offsetX:", event.offsetX, "event.offsetY:", event.offsetY);
-  if (!drawingContext || drawingToolbar.classList.contains('hidden')) return;
+  if (!isDrawingModeActive) return;
   event.stopPropagation();
   isDrawing = true;
   lastX = event.offsetX;
@@ -733,8 +751,7 @@ function startDrawing(event) {
 }
 
 function draw(event) {
-  console.log("draw called. isDrawing:", isDrawing, "drawingContext:", drawingContext, "toolbar hidden:", drawingToolbar.classList.contains('hidden'), "event.offsetX:", event.offsetX, "event.offsetY:", event.offsetY);
-  if (!isDrawing || !drawingContext || drawingToolbar.classList.contains('hidden')) return;
+  if (!isDrawing || !isDrawingModeActive) return;
   drawingContext.lineTo(event.offsetX, event.offsetY);
   drawingContext.lineWidth = currentLineThickness;
   drawingContext.lineCap = 'round';
@@ -759,6 +776,7 @@ function draw(event) {
 }
 
 function stopDrawing() {
+  if (!isDrawing) return;
   isDrawing = false;
   if (drawingContext) {
     drawingContext.closePath();
@@ -802,6 +820,31 @@ function drawRemoteEvent(data) {
   }
 }
 
+function initializeToolbar() {
+    // Toolbar event listeners
+    document.querySelectorAll('.color-btn').forEach(button => {
+      button.addEventListener('click', (event) => {
+        currentColor = event.currentTarget.dataset.color;
+        isEraserMode = false;
+        // Re-apply settings to context immediately
+        drawingContext.strokeStyle = currentColor;
+        drawingContext.globalCompositeOperation = 'source-over';
+      });
+    });
+
+    document.getElementById('eraser-btn').addEventListener('click', () => {
+      isEraserMode = true;
+      // Re-apply settings to context immediately
+      drawingContext.globalCompositeOperation = 'destination-out';
+      drawingContext.strokeStyle = 'rgba(0,0,0,1)';
+    });
+
+    document.getElementById('clear-canvas-btn').addEventListener('click', () => {
+      clearCanvas();
+      channel.push('draw_event', { type: 'clear' }); // Broadcast clear event
+    });
+}
+
 export const Room = {
   isScreenSharing: false,
   screenShareStream: null,
@@ -833,31 +876,32 @@ export const Room = {
     drawingCanvas.addEventListener('mouseup', stopDrawing);
     drawingCanvas.addEventListener('mouseout', stopDrawing);
 
-    // Toolbar event listeners
-    document.querySelectorAll('.color-btn').forEach(button => {
-      button.addEventListener('click', (event) => {
-        currentColor = event.target.dataset.color;
-        isEraserMode = false;
-        drawingContext.strokeStyle = currentColor;
-        drawingContext.globalCompositeOperation = 'source-over';
-      });
-    });
+    initializeToolbar();
 
-    document.getElementById('eraser-btn').addEventListener('click', () => {
-      isEraserMode = true;
-      drawingContext.globalCompositeOperation = 'destination-out'; // Erase effect
-      drawingContext.strokeStyle = 'rgba(0,0,0,1)'; // Color doesn't matter for eraser, but needs to be set
-    });
-
-    document.getElementById('clear-canvas-btn').addEventListener('click', () => {
-      clearCanvas();
-      channel.push('draw_event', { type: 'clear' }); // Broadcast clear event
-    });
-
-    // Toggle Whiteboard Mode
+    // --- Overhauled Whiteboard/Drawing Toggle Logic ---
     toggleWhiteboardButton.addEventListener('click', () => {
-      isWhiteboardActive = !isWhiteboardActive;
-      channel.push('whiteboard_toggled', { active: isWhiteboardActive });
+      const isPresentationActive = !presentationLayout.classList.contains('hidden');
+
+      if (isPresentationActive && !isWhiteboardActive) {
+        // Case 1: A presentation (e.g. screen share) is active, so toggle drawing mode on it.
+        if (isDrawingModeActive) {
+          disableDrawingMode();
+        } else {
+          enableDrawingMode();
+        }
+      } else if (isWhiteboardActive) {
+        // Case 2: The main whiteboard is active, so just toggle drawing mode.
+        // (Users will use the "Stop Sharing" button to close it)
+         if (isDrawingModeActive) {
+          disableDrawingMode();
+        } else {
+          enableDrawingMode();
+        }
+      }
+      else {
+        // Case 3: No presentation is active, so start the main whiteboard.
+        channel.push('whiteboard_toggled', { active: true });
+      }
     });
 
     // Listen for drawing events
@@ -869,15 +913,20 @@ export const Room = {
     channel.on('whiteboard_toggled', (payload) => {
       isWhiteboardActive = payload.active;
       if (isWhiteboardActive) {
-        // Create a dummy element to pass to startPresentation
-        const dummyElement = document.createElement('div');
-        dummyElement.id = 'whiteboard-container';
-        startPresentation(dummyElement);
+        startPresentation(null); // Pass null because we're not adding a new element
         mainStage.style.backgroundColor = 'white';
-        drawingToolbar.classList.remove('hidden');
-        drawingCanvas.style.pointerEvents = 'auto';
+        enableDrawingMode();
+        // Show stop button, hide others
+        document.getElementById('stop-sharing-button').classList.remove('hidden');
+        document.getElementById('toggle-screen-share').classList.add('hidden');
+        document.getElementById('open-youtube-modal').classList.add('hidden');
+
       } else {
         stopPresentation();
+        // Hide stop button, show others
+        document.getElementById('stop-sharing-button').classList.add('hidden');
+        document.getElementById('toggle-screen-share').classList.remove('hidden');
+        document.getElementById('open-youtube-modal').classList.remove('hidden');
       }
     });
 
@@ -1080,6 +1129,9 @@ function handleChatVisibility() {
     stopSharingButton.addEventListener('click', () => {
       if (this.isScreenSharing) {
         this.stopScreenShare();
+      } else if (isWhiteboardActive) {
+        isWhiteboardActive = false; // Set flag first
+        channel.push('whiteboard_toggled', { active: false });
       }
       else {
         channel.push('stop_video_share', {});
