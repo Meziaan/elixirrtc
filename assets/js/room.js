@@ -59,13 +59,13 @@ function formatTime(seconds) {
   return `${paddedMinutes}:${paddedSeconds}`;
 }
 
-function startTimer() {
+function startTimer(startTime) {
   if (timerInterval) return; // Timer already running
 
   meetingTimer = document.getElementById('meeting-timer');
   if (!meetingTimer) return;
 
-  secondsElapsed = 0;
+  secondsElapsed = Math.floor((Date.now() - startTime) / 1000);
   meetingTimer.innerText = formatTime(secondsElapsed);
 
 
@@ -481,7 +481,7 @@ async function joinChannel(roomId, name) {
         .join()
         .receive('ok', async (resp) => {
           console.log('Joined channel successfully', resp);
-          startTimer();
+          startTimer(resp.start_time);
 
           // If pc already exists, close it before creating a new one
           if (pc) {

@@ -24,7 +24,8 @@ defmodule Nexus.Room do
       peers: %{},
       pending_peers: %{},
       peer_pid_to_id: %{},
-      shared_video: nil
+      shared_video: nil,
+      start_time: System.os_time(:millisecond)
     }
 
     {:ok, state}
@@ -65,7 +66,7 @@ defmodule Nexus.Room do
 
         Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
 
-        {:reply, {:ok, id, shared_video_for_new_peer}, state}
+        {:reply, {:ok, id, shared_video_for_new_peer, state.start_time}, state}
 
       {:error, reason} ->
         Logger.error("Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}")

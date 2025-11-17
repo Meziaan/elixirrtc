@@ -39,24 +39,23 @@ defmodule NexusWeb.PeerChannel do
     :ok
   end
 
-  @impl true
-  def join("peer:" <> room_id, %{"name" => name}, socket) do
-    pid = self()
-
-    case Rooms.add_peer(room_id, pid) do
-      {:ok, id, shared_video} -> 
-        send(self(), {:after_join, shared_video})
-        socket = 
-          socket
-          |> assign(:peer, id)
-          |> assign(:name, name)
-          |> assign(:room_id, room_id)
-
-        {:ok, %{peer_id: id}, socket}
-      {:error, _reason} = error -> error
+    @impl true
+    def join("peer:" <> room_id, %{"name" => name}, socket) do
+      pid = self()
+  
+      case Rooms.add_peer(room_id, pid) do
+        {:ok, id, shared_video, start_time} -> 
+          send(self(), {:after_join, shared_video})
+          socket = 
+            socket
+            |> assign(:peer, id)
+            |> assign(:name, name)
+            |> assign(:room_id, room_id)
+  
+          {:ok, %{peer_id: id, start_time: start_time}, socket}
+        {:error, _reason} = error -> error
+      end
     end
-  end
-
   @impl true
   def handle_in("sdp_answer", %{"body" => body}, socket) do
     case Peer.apply_sdp_answer(socket.assigns.peer, body) do
