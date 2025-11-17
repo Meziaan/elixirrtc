@@ -47,6 +47,41 @@ let isDrawingModeActive = false;
 let lastX = 0;
 let lastY = 0;
 
+let meetingTimer = null;
+let timerInterval = null;
+let secondsElapsed = 0;
+
+function formatTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  const paddedMinutes = String(minutes).padStart(2, '0');
+  const paddedSeconds = String(remainingSeconds).padStart(2, '0');
+  return `${paddedMinutes}:${paddedSeconds}`;
+}
+
+function startTimer() {
+  if (timerInterval) return; // Timer already running
+
+  meetingTimer = document.getElementById('meeting-timer');
+  if (!meetingTimer) return;
+
+  secondsElapsed = 0;
+  meetingTimer.innerText = formatTime(secondsElapsed);
+
+
+  timerInterval = setInterval(() => {
+    secondsElapsed++;
+    meetingTimer.innerText = formatTime(secondsElapsed);
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
@@ -339,10 +374,12 @@ async function joinChannel(roomId, name) {
 
   channel.onError(() => {
     console.error('Phoenix channel error!');
+    stopTimer();
     // Let the socket handle reconnection attempts
   });
   channel.onClose(() => {
     console.warn('Phoenix channel closed!');
+    stopTimer();
     // Let the socket handle reconnection attempts
   });
 
@@ -444,6 +481,7 @@ async function joinChannel(roomId, name) {
         .join()
         .receive('ok', async (resp) => {
           console.log('Joined channel successfully', resp);
+          startTimer();
 
           // If pc already exists, close it before creating a new one
           if (pc) {
@@ -958,6 +996,7 @@ export const Room = {
     leaveRoom.addEventListener('click', () => {
       channel.leave();
       pc.close();
+      stopTimer();
       localStream.getTracks().forEach((track) => track.stop());
       window.location.href = '/';
     });

@@ -1,4 +1,5 @@
 <div id="room" phx-hook="Room" data-room-id={@room_id} data-name={@name} class="h-full flex flex-col justify-center items-center gap-4 p-4">
+  <div id="meeting-timer" class="text-white font-bold p-2 bg-gray-800 bg-opacity-50 rounded-lg absolute top-6 left-1/2 -translate-x-1/2 z-10">00:00</div>
   <div id="join-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max-w-2xl" role="alert">
     <strong class="font-bold">Error!</strong>
     <span class="block sm:inline"></span>
