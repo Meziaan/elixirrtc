@@ -839,7 +839,16 @@ function handleChatVisibility() {
     if (this.isScreenSharing) return;
 
     try {
-      this.screenShareStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const displayMediaOptions = {
+        video: {
+          cursor: "always",
+          latencyHint: "motion",
+          width: { max: 1280 },
+          height: { max: 720 },
+          frameRate: { max: 15 }
+        }
+      };
+      this.screenShareStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
     } catch (err) {
       console.error("Error starting screen share:", err);
       return;
