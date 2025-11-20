@@ -330,15 +330,45 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_cast(:send_offer, state) do
+  def handle_cast(:send_offer, %{pc: pc} = state) do
     Logger.debug("Peer #{state.id} received request to send new offer.")
-    {:noreply, send_offer(state)}
+
+    transceivers = PeerConnection.get_transceivers(pc)
+
+    # Spurious renegotiation requests from the client can cause a crash
+    # if they happen before the peer connection is fully established and
+    # codecs are negotiated for sender tracks. We guard against this by
+    # checking if there's at least one video track ready to send.
+    can_renegotiate? =
+      Enum.any?(transceivers, fn t ->
+        t.kind == :video and t.direction in [:sendonly, :sendrecv] and t.sender &&
+          !is_nil(t.sender.codec)
+      end)
+
+
+    if can_renegotiate? do
+      {:noreply, send_offer(state)}
+    else
+      Logger.warning(
+        "Skipping client-requested renegotiation for #{state.id} because no video transceiver is ready."
+      )
+
+      {:noreply, state}
+    end
   end
 
   defp setup_transceivers(pc, peer_ids) do
     # Inbound tracks
-    {:ok, _video_tr} = PeerConnection.add_transceiver(pc, :video, direction: :sendrecv)
-    {:ok, _audio_tr} = PeerConnection.add_transceiver(pc, :audio, direction: :sendrecv)
+    # We are the ones that initiate the connection so we are offerer.
+    # We need to use :sendrecv direction and attach a dummy track,
+    # so that the offer created by us contains proper media descriptions.
+    # This will prevent call to PeerConnection.create_offer/1 from crashing.
+    # The track will be replaced by a proper one once it is received from the client.
+    {:ok, video_tr} = PeerConnection.add_transceiver(pc, :video, direction: :sendrecv)
+    :ok = PeerConnection.replace_track(pc, video_tr.sender.id, MediaStreamTrack.new(:video, []))
+
+    {:ok, audio_tr} = PeerConnection.add_transceiver(pc, :audio, direction: :sendrecv)
+    :ok = PeerConnection.replace_track(pc, audio_tr.sender.id, MediaStreamTrack.new(:audio, []))
 
     # Outbound tracks
     Map.new(peer_ids, fn id ->
