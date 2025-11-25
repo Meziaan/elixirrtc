@@ -1,4 +1,5 @@
 import { Socket, Presence } from 'phoenix';
+import { Whiteboard } from './whiteboard.js';
 
 const pcConfig = { iceServers: [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -18,6 +19,8 @@ const peerCount = document.getElementById('viewercount');
 const presentationLayout = document.getElementById('presentation-layout');
 const mainStage = document.getElementById('main-stage');
 const filmstrip = document.getElementById('filmstrip');
+const whiteboardContainer = document.getElementById('whiteboard-container');
+
 
 let localStream = undefined;
 let channel = undefined;
@@ -31,6 +34,7 @@ let sharerId = null;
 let peerVideoElements = {}; // New map to store video elements per peer
 let localScreenShareVideoElement = null; // To hold the local screen share video element
 let sharedVideo = {player: null, hls: null};
+let whiteboard = null;
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -50,7 +54,7 @@ function extractYoutubeVideoId(url) {
 function startPresentation(contentElement) {
   presentationLayout.classList.remove('hidden');
   videoPlayerWrapper.classList.add('hidden');
-
+  
   // Move all video elements from videoPlayerWrapper to the filmstrip
   // Include localVideoPlayer if it's not hidden
   Array.from(videoPlayerWrapper.children).forEach(child => {
@@ -59,16 +63,24 @@ function startPresentation(contentElement) {
     }
   });
 
-  mainStage.innerHTML = ''; // Clear any previous content (e.g., YouTube iframe)
-  if (contentElement.parentNode) {
-    contentElement.parentNode.removeChild(contentElement);
-  }
+  mainStage.innerHTML = ''; // Clear any previous content
   mainStage.appendChild(contentElement);
+
+  // If the content is the whiteboard, ensure its container is visible
+  if (contentElement.id === 'whiteboard-container') {
+    whiteboardContainer.classList.remove('hidden');
+  }
 }
 
 function stopPresentation() {
   presentationLayout.classList.add('hidden');
   videoPlayerWrapper.classList.remove('hidden');
+
+  // If whiteboard was active, move it back to its original parent and hide it
+  if (mainStage.contains(whiteboardContainer)) {
+    document.querySelector('.flex-1.flex.flex-col').appendChild(whiteboardContainer);
+    whiteboardContainer.classList.add('hidden');
+  }
 
   // Move all video elements from filmstrip back to the grid
   Array.from(filmstrip.children).forEach(child => {
@@ -77,14 +89,7 @@ function stopPresentation() {
     }
   });
 
-  // Move the video element from mainStage back to videoPlayerWrapper if it's a video container
-  if (mainStage.firstChild && mainStage.firstChild.id && 
-      (mainStage.firstChild.id.startsWith('video-container-') || mainStage.firstChild.id === 'local-screen-share-video-container')) {
-    videoPlayerWrapper.appendChild(mainStage.firstChild);
-  } else {
-    // If it was a YouTube iframe or other non-reusable content, just clear it
-    mainStage.innerHTML = '';
-  }
+  mainStage.innerHTML = '';
   updateVideoGrid();
 }
 
@@ -261,6 +266,8 @@ async function joinChannel(roomId, name) {
   });
 
   channel = socket.channel(`peer:${roomId}`, { name: name });
+  whiteboard = new Whiteboard(document.getElementById('whiteboard-canvas'), channel);
+
 
   channel.onError(() => {
     console.error('Phoenix channel error!');
@@ -390,6 +397,8 @@ async function joinChannel(roomId, name) {
               channel.trigger('new_direct_video', { url: video.url, sender: video.sender, sharer_id: video.sharer_id });
             } else if (video.type === 'screen_share') {
               channel.trigger('screen_share_started', { sharer_id: video.sharer_id });
+            } else if (video.type === 'whiteboard') {
+              channel.trigger('whiteboard_started', { sharer_id: video.sharer_id });
             }
           }
 
@@ -574,6 +583,7 @@ async function joinChannel(roomId, name) {
     channel.on('screen_share_started', (payload) => {
       console.log("screen_share_started event received:", payload);
       sharerId = payload.sharer_id;
+      this.activeSharing = 'screen';
 
       const screenShareVideoContainer = peerVideoElements[sharerId]?.videoContainer;
       if (screenShareVideoContainer) {
@@ -585,7 +595,44 @@ async function joinChannel(roomId, name) {
     channel.on('screen_share_stopped', () => {
       console.log("screen_share_stopped event received.");
       sharerId = null;
+      this.activeSharing = null;
       stopPresentation();
+    });
+
+    channel.on('whiteboard_started', (payload) => {
+      sharerId = payload.sharer_id;
+      this.activeSharing = 'whiteboard';
+      
+      startPresentation(whiteboardContainer);
+      whiteboard.init();
+      whiteboard.resize();
+
+      document.getElementById('toggle-whiteboard').classList.add('hidden');
+      document.getElementById('toggle-screen-share').classList.add('hidden');
+      document.getElementById('open-youtube-modal').classList.add('hidden');
+      if (peerId === sharerId) {
+        document.getElementById('stop-sharing-button').classList.remove('hidden');
+      }
+    });
+
+    channel.on('whiteboard_stopped', () => {
+      sharerId = null;
+      this.activeSharing = null;
+      whiteboard.destroy();
+      stopPresentation();
+      
+      document.getElementById('toggle-whiteboard').classList.remove('hidden');
+      document.getElementById('toggle-screen-share').classList.remove('hidden');
+      document.getElementById('open-youtube-modal').classList.remove('hidden');
+      document.getElementById('stop-sharing-button').classList.add('hidden');
+    });
+
+    channel.on('whiteboard_draw', (data) => {
+      whiteboard.draw(data);
+    });
+
+    channel.on('whiteboard_clear', () => {
+      whiteboard.clear();
     });
 }
 
@@ -612,6 +659,7 @@ export const Room = {
   isScreenSharing: false,
   screenShareStream: null,
   originalVideoTrack: null,
+  activeSharing: null,
 
   async mounted() {
     const roomId = this.el.dataset.roomId;
@@ -807,10 +855,13 @@ function handleChatVisibility() {
       const youtubeVideoId = extractYoutubeVideoId(url);
 
       if (youtubeVideoId) {
+        this.activeSharing = 'youtube';
         channel.push('share_youtube_video', { video_id: youtubeVideoId });
       } else if (url.match(/\.mp4$|\.webm$|\.ogg$/)) {
+        this.activeSharing = 'direct';
         channel.push('share_direct_video', { url: url });
       } else if (url.match(/^https:\/\/www\.heales\.com\/video\//)) {
+        this.activeSharing = 'direct';
         channel.push('share_heales_video', { url: url });
       } else {
         alert('Please enter a valid YouTube, direct video, or Heales video URL.');
@@ -820,15 +871,49 @@ function handleChatVisibility() {
     });
 
     stopSharingButton.addEventListener('click', () => {
-      if (this.isScreenSharing) {
+      if (this.activeSharing === 'screen') {
         this.stopScreenShare();
-      }
-      else {
+      } else if (this.activeSharing === 'whiteboard') {
+        this.stopWhiteboard();
+      } else if (this.activeSharing === 'youtube' || this.activeSharing === 'direct') {
         channel.push('stop_video_share', {});
       }
     });
 
     document.getElementById('toggle-screen-share').addEventListener('click', () => this.startScreenShare());
+
+    // Whiteboard logic
+    document.getElementById('toggle-whiteboard').addEventListener('click', () => {
+      if (this.activeSharing === 'whiteboard') {
+        this.stopWhiteboard();
+      } else {
+        this.startWhiteboard();
+      }
+    });
+
+    document.getElementById('whiteboard-color-black').addEventListener('click', () => whiteboard.setColor('black'));
+    document.getElementById('whiteboard-color-red').addEventListener('click', () => whiteboard.setColor('red'));
+    document.getElementById('whiteboard-color-blue').addEventListener('click', () => whiteboard.setColor('blue'));
+    document.getElementById('whiteboard-color-green').addEventListener('click', () => whiteboard.setColor('green'));
+    document.getElementById('whiteboard-eraser').addEventListener('click', () => whiteboard.setMode('erase'));
+    document.getElementById('whiteboard-clear').addEventListener('click', () => {
+      whiteboard.clear();
+      channel.push('whiteboard_clear', {});
+    });
+  },
+
+  startWhiteboard() {
+    if (sharerId && sharerId !== peerId) {
+      alert('Another user is already presenting.');
+      return;
+    }
+    this.activeSharing = 'whiteboard';
+    channel.push('start_whiteboard', {});
+  },
+
+  stopWhiteboard() {
+    this.activeSharing = null;
+    channel.push('stop_whiteboard', {});
   },
 
   async startScreenShare() {
@@ -865,6 +950,7 @@ function handleChatVisibility() {
     this.originalVideoTrack = videoSender.track;
     videoSender.replaceTrack(screenTrack);
     this.isScreenSharing = true;
+    this.activeSharing = 'screen';
 
     channel.push('screen_share_started', { sharer_id: peerId });
 

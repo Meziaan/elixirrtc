@@ -166,6 +166,35 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
+  def handle_in("start_whiteboard", _, socket) do
+    sharer_id = socket.assigns.peer
+    Logger.info("Whiteboard started by #{sharer_id} in room #{socket.assigns.room_id}")
+    Rooms.set_shared_video(socket.assigns.room_id, %{type: :whiteboard, sharer_id: sharer_id})
+    broadcast!(socket, "whiteboard_started", %{sharer_id: sharer_id})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("stop_whiteboard", _, socket) do
+    Logger.info("Whiteboard stopped in room #{socket.assigns.room_id}")
+    Rooms.clear_shared_video(socket.assigns.room_id)
+    broadcast!(socket, "whiteboard_stopped", %{})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("whiteboard_draw", data, socket) do
+    broadcast_from!(socket, "whiteboard_draw", data)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_in("whiteboard_clear", _, socket) do
+    broadcast!(socket, "whiteboard_clear", %{})
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_in("webrtc_renegotiate", _payload, socket) do
     Logger.info("Peer #{socket.assigns.peer} requested WebRTC renegotiation.")
     # Trigger the peer to send a new SDP offer
@@ -201,6 +230,8 @@ defmodule NexusWeb.PeerChannel do
           push(socket, "new_direct_video", %{url: shared_video.url, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
         :screen_share ->
           push(socket, "screen_share_started", %{sharer_id: shared_video.sharer_id})
+        :whiteboard ->
+          push(socket, "whiteboard_started", %{sharer_id: shared_video.sharer_id})
       end
     end
 

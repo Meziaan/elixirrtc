@@ -22,6 +22,21 @@
           <div id="name-overlay-local" class="absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded"></div>
         </div>
       </div>
+      <div id="whiteboard-container" class="w-full h-full bg-white rounded-xl flex-col gap-2 hidden">
+        <div id="whiteboard-controls" class="p-2 flex gap-2 items-center">
+          <button id="whiteboard-color-black" class="w-6 h-6 bg-black rounded-full border-2 border-gray-400"></button>
+          <button id="whiteboard-color-red" class="w-6 h-6 bg-red-500 rounded-full"></button>
+          <button id="whiteboard-color-blue" class="w-6 h-6 bg-blue-500 rounded-full"></button>
+          <button id="whiteboard-color-green" class="w-6 h-6 bg-green-500 rounded-full"></button>
+          <button id="whiteboard-eraser" class="p-1 rounded-full">
+            <.icon name="hero-no-symbol" class="h-6 w-6" />
+          </button>
+          <button id="whiteboard-clear" class="p-1 rounded-full">
+            <.icon name="hero-trash" class="h-6 w-6" />
+          </button>
+        </div>
+        <canvas id="whiteboard-canvas" class="flex-1 w-full h-full"></canvas>
+      </div>
     </div>
 
     <!-- Chat Panel -->
@@ -75,6 +90,9 @@
     </button>
     <button id="toggle-screen-share" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Share Screen">
       <.icon name="hero-computer-desktop-solid" class="h-6 w-6" />
+    </button>
+    <button id="toggle-whiteboard" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full" title="Start Whiteboard">
+      <.icon name="hero-paint-brush-solid" class="h-6 w-6" />
     </button>
     <button id="stop-sharing-button" class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full hidden" title="Stop Sharing">
       <.icon name="hero-stop-circle-solid" class="h-6 w-6" />
