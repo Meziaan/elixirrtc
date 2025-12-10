@@ -35,6 +35,18 @@ defmodule Nexus.Rooms do
     end
   end
 
+  def whiteboard_draw(room_id, data) do
+    with {:ok, room_pid} <- find_or_start_room(room_id) do
+      GenServer.call(room_pid, {:whiteboard_draw, data})
+    end
+  end
+
+  def set_video_state(room_id, video_state) do
+    with {:ok, room_pid} <- find_or_start_room(room_id) do
+      GenServer.call(room_pid, {:set_video_state, video_state})
+    end
+  end
+
   defp find_or_start_room(room_id) do
     case Registry.lookup(Nexus.RoomRegistry, room_id) do
       [{pid, _}] ->

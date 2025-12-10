@@ -39,16 +39,19 @@ defmodule NexusWeb.PeerChannel do
     pid = self()
 
     case Rooms.add_peer(room_id, pid) do
-      {:ok, id, shared_video} -> 
-        send(self(), {:after_join, shared_video})
-        socket = 
+      {:ok, id, shared_video, whiteboard_history, video_state} ->
+        send(self(), {:after_join, shared_video, whiteboard_history, video_state})
+
+        socket =
           socket
           |> assign(:peer, id)
           |> assign(:name, name)
           |> assign(:room_id, room_id)
 
-        {:ok, %{peer_id: id}, socket}
-      {:error, _reason} = error -> error
+        {:ok, %{peer_id: id, shared_video: shared_video, whiteboard_history: whiteboard_history, video_state: video_state}, socket}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -132,6 +135,7 @@ defmodule NexusWeb.PeerChannel do
   def handle_in("player_state_change", payload, socket) do
     case Rooms.get_shared_video(socket.assigns.room_id) do
       %{sharer_id: sharer_id} when sharer_id == socket.assigns.peer ->
+        Rooms.set_video_state(socket.assigns.room_id, payload)
         broadcast_from!(socket, "player_state_change", payload)
       _ ->
         :ok
@@ -142,6 +146,7 @@ defmodule NexusWeb.PeerChannel do
   def handle_in("direct_video_state_change", payload, socket) do
     case Rooms.get_shared_video(socket.assigns.room_id) do
       %{sharer_id: sharer_id} when sharer_id == socket.assigns.peer ->
+        Rooms.set_video_state(socket.assigns.room_id, payload)
         broadcast_from!(socket, "direct_video_state_change", payload)
       _ ->
         :ok
@@ -184,12 +189,15 @@ defmodule NexusWeb.PeerChannel do
 
   @impl true
   def handle_in("whiteboard_draw", data, socket) do
+    Rooms.whiteboard_draw(socket.assigns.room_id, data)
     broadcast_from!(socket, "whiteboard_draw", data)
     {:noreply, socket}
   end
 
   @impl true
   def handle_in("whiteboard_clear", _, socket) do
+    # This should also clear the history on the backend
+    Rooms.set_shared_video(socket.assigns.room_id, %{type: :whiteboard, sharer_id: socket.assigns.peer})
     broadcast!(socket, "whiteboard_clear", %{})
     {:noreply, socket}
   end
@@ -221,22 +229,42 @@ defmodule NexusWeb.PeerChannel do
   end
 
   @impl true
-  def handle_info({:after_join, shared_video}, socket) do
+  def handle_info({:after_join, shared_video, whiteboard_history, video_state}, socket) do
     if shared_video do
       case shared_video.type do
         :youtube ->
           push(socket, "youtube_video_shared", %{video_id: shared_video.id, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+          if video_state, do: push(socket, "player_state_change", video_state)
+
         :direct ->
           push(socket, "new_direct_video", %{url: shared_video.url, sender: shared_video.sender, sharer_id: shared_video.sharer_id})
+          if video_state, do: push(socket, "direct_video_state_change", video_state)
+
         :screen_share ->
           push(socket, "screen_share_started", %{sharer_id: shared_video.sharer_id})
+
         :whiteboard ->
-          push(socket, "whiteboard_started", %{sharer_id: shared_video.sharer_id})
+          push(socket, "whiteboard_started", %{sharer_id: shared_video.sharer_id, history: whiteboard_history})
       end
     end
 
     {:ok, _ref} = Presence.track(socket, socket.assigns.peer, %{name: socket.assigns.name})
     push(socket, "presence_state", Presence.list(socket))
+    {:noreply, socket}
+  end
+  
+  @impl true
+  def handle_info({:sharing_stopped, type}, socket) do
+    event =
+      case type do
+        :youtube -> "video_share_stopped"
+        :direct -> "video_share_stopped"
+        :screen_share -> "screen_share_stopped"
+        :whiteboard -> "whiteboard_stopped"
+        _ -> nil
+      end
+
+    if event, do: push(socket, event, %{})
     {:noreply, socket}
   end
 end

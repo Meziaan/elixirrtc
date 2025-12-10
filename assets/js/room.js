@@ -29,6 +29,7 @@ let localTracksAdded = false;
 let streamIdToPeerId = {};
 let presences = {};
 let youtubePlayer = null;
+let initialYoutubeState = null;
 let peerId = null;
 let sharerId = null;
 let peerVideoElements = {}; // New map to store video elements per peer
@@ -94,6 +95,31 @@ function stopPresentation() {
   updateVideoGrid();
 }
 
+function applyVideoState(player, state) {
+  if (!player || !state) return;
+
+  // YouTube Player
+  if (typeof player.seekTo === 'function') {
+    console.log("Applying state to YouTube player:", state);
+    player.seekTo(state.time, true);
+    if (state.state === 1) { // 1 is YT.PlayerState.PLAYING
+        player.playVideo();
+    } else {
+        player.pauseVideo();
+    }
+  } 
+  // Direct <video> Element
+  else {
+    console.log("Applying state to direct video player:", state);
+    player.currentTime = state.time;
+    if (state.state === 'play') {
+        player.play();
+    } else {
+        player.pause();
+    }
+  }
+}
+
 async function createPeerConnection() {
   pc = new RTCPeerConnection(pcConfig);
 
@@ -151,7 +177,6 @@ async function createPeerConnection() {
         console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
       } else {
         // Regular camera feed.
-        // Check if a presentation is active. The `presentationLayout` will NOT have the 'hidden' class.
         const isPresentationActive = !presentationLayout.classList.contains('hidden');
 
         if (isPresentationActive) {
@@ -170,14 +195,8 @@ async function createPeerConnection() {
 
       event.track.onended = (_) => {
         console.log('Track ended: ' + event.track.id);
-        // If the ended track was the main stage screen share, stop presentation
-        if (remotePeerId === sharerId) {
-          stopPresentation();
-        }
-        // Do NOT remove the container. It will be reused for the next track.
-        // The videoPlayer.srcObject will become null or inactive naturally.
-        // If a new track arrives for this peer, srcObject will be updated.
-        // If the peer leaves, the presence.onLeave handler will remove the container.
+        // The important cleanup logic was racy here and has been moved to the
+        // deterministic 'screen_share_stopped' event handler.
       };
     } else if (event.track.kind == 'audio') {
       if (!event.streams || event.streams.length === 0 || !event.streams[0]) {
@@ -374,50 +393,32 @@ async function joinChannel(roomId, name) {
         .join()
         .receive('ok', async (resp) => {
           console.log('Joined channel successfully', resp);
-
-          // If pc already exists, close it before creating a new one
-          if (pc) {
-            console.log("Closing existing PeerConnection before rejoining channel.");
-            pc.close();
-            pc = null; // Clear the reference
-            localTracksAdded = false; // Reset flag for adding tracks
-          }
-
-          // Recreate PeerConnection
-          try {
-            await createPeerConnection(); // Ensure pc is re-initialized
-          } catch (error) {
-            console.error("Failed to create PeerConnection during channel rejoin:", error);
-            const errorNode = document.getElementById('join-error-message');
-            if (errorNode) {
-              errorNode.innerText = 'Network is offline. Cannot establish video connection.';
-              errorNode.classList.remove('hidden');
-            }
-            // IMPORTANT: If pc creation fails, we cannot proceed with WebRTC.
-            // We might want to disconnect the channel or prevent further actions.
-            // For now, we'll just log and display the error.
-            return; // Stop further processing in this 'ok' handler
-          }
-
           peerId = resp.peer_id;
-          if (resp && resp.shared_video) {
+
+          // Now create the peer connection
+          try {
+            await createPeerConnection();
+          } catch (error) {
+            console.error("Failed to create PeerConnection on join:", error);
+            // Handle error appropriately
+            return;
+          }
+
+          if (resp.shared_video) {
             const video = resp.shared_video;
+            const history = resp.whiteboard_history;
+            const video_state = resp.video_state;
+
             if (video.type === 'youtube') {
-              channel.trigger('youtube_video_shared', { video_id: video.id, sender: video.sender, sharer_id: video.sharer_id });
+              initialYoutubeState = video_state;
+              channel.trigger('youtube_video_shared', { ...video });
             } else if (video.type === 'direct') {
-              channel.trigger('new_direct_video', { url: video.url, sender: video.sender, sharer_id: video.sharer_id });
+              channel.trigger('new_direct_video', { ...video, initialState: video_state });
             } else if (video.type === 'screen_share') {
               channel.trigger('screen_share_started', { sharer_id: video.sharer_id });
             } else if (video.type === 'whiteboard') {
-              channel.trigger('whiteboard_started', { sharer_id: video.sharer_id });
+              channel.trigger('whiteboard_started', { sharer_id: video.sharer_id, history: history });
             }
-          }
-
-          // Re-add local tracks if localStream is available
-          if (localStream && !localTracksAdded) {
-            console.log('Re-adding local tracks to new peer connection');
-            localStream.getTracks().forEach((track) => pc.addTrack(track));
-            localTracksAdded = true;
           }
         })
         .receive('error', (resp) => {
@@ -425,20 +426,17 @@ async function joinChannel(roomId, name) {
           socket.disconnect();
     
           const localVideoContainer = document.getElementById('video-container-local');
-          if (localVideoContainer) localVideoContainer.remove(); // Use .remove() for direct removal
+          if (localVideoContainer) localVideoContainer.remove();
           
-          console.log(`Closing stream with id: ${localStream.id}`);
-          localStream.getTracks().forEach((track) => track.stop());
+          if(localStream) localStream.getTracks().forEach((track) => track.stop());
           localStream = undefined;
     
           const errorNode = document.getElementById('join-error-message');
           errorNode.innerText = 'Unable to join the room';
-          if (resp == 'peer_limit_reached') {
-            errorNode.innerText +=
-              ': Peer limit reached. Try again in a few minutes';
-          } else if (resp == 'peer_start_failed') {
-            errorNode.innerText +=
-              ': Failed to initialize your connection. Please try again.';
+          if (resp.reason == 'peer_limit_reached') {
+            errorNode.innerText += ': Peer limit reached. Try again in a few minutes';
+          } else if (resp.reason == 'peer_start_failed') {
+            errorNode.innerText += ': Failed to initialize your connection. Please try again.';
           }
           errorNode.classList.remove('hidden');
         });
@@ -448,9 +446,7 @@ async function joinChannel(roomId, name) {
           const videoId = payload.video_id;
 
           const wrapper = document.createElement('div');
-          wrapper.style.position = 'relative';
-          wrapper.style.width = '100%';
-          wrapper.style.height = '100%';
+          wrapper.style.cssText = 'position: relative; width: 100%; height: 100%;';
 
           const playerDiv = document.createElement('div');
           playerDiv.id = 'youtube-player';
@@ -461,12 +457,7 @@ async function joinChannel(roomId, name) {
 
           if (!isSharer) {
             const overlay = document.createElement('div');
-            overlay.style.position = 'absolute';
-            overlay.style.top = 0;
-            overlay.style.left = 0;
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.zIndex = 10;
+            overlay.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;';
             wrapper.appendChild(overlay);
           }
 
@@ -484,9 +475,12 @@ async function joinChannel(roomId, name) {
               onReady: (event) => {
                 if (isSharer) {
                   channel.push('player_state_change', {
-                    state: event.data,
+                    state: event.target.getPlayerState(),
                     time: event.target.getCurrentTime(),
                   });
+                } else if (initialYoutubeState) {
+                  applyVideoState(event.target, initialYoutubeState);
+                  initialYoutubeState = null;
                 }
               },
               onStateChange: (event) => {
@@ -507,20 +501,8 @@ async function joinChannel(roomId, name) {
         });
 
     channel.on('player_state_change', (payload) => {
-      if (peerId !== sharerId && youtubePlayer) {
-        switch (payload.state) {
-          case YT.PlayerState.PLAYING:
-            youtubePlayer.seekTo(payload.time, true);
-            youtubePlayer.playVideo();
-            break;
-          case YT.PlayerState.PAUSED:
-            youtubePlayer.seekTo(payload.time, true);
-            youtubePlayer.pauseVideo();
-            break;
-          case YT.PlayerState.ENDED:
-            youtubePlayer.stopVideo();
-            break;
-        }
+      if (peerId !== sharerId) {
+        applyVideoState(youtubePlayer, payload);
       }
     });
 
@@ -535,15 +517,12 @@ async function joinChannel(roomId, name) {
       videoPlayer.className = 'w-full h-full object-contain';
 
       if (isSharer) {
-        videoPlayer.addEventListener('play', () => {
-          channel.push('direct_video_state_change', { state: 'play', time: videoPlayer.currentTime });
-        });
-        videoPlayer.addEventListener('pause', () => {
-          channel.push('direct_video_state_change', { state: 'pause', time: videoPlayer.currentTime });
-        });
-        videoPlayer.addEventListener('seeked', () => {
+        const sendState = () => {
           channel.push('direct_video_state_change', { state: videoPlayer.paused ? 'pause' : 'play', time: videoPlayer.currentTime });
-        });
+        };
+        videoPlayer.addEventListener('play', sendState);
+        videoPlayer.addEventListener('pause', sendState);
+        videoPlayer.addEventListener('seeked', sendState);
       }
 
       if (url.endsWith('.m3u8') && Hls.isSupported()) {
@@ -556,8 +535,11 @@ async function joinChannel(roomId, name) {
       }
 
       sharedVideo.player = videoPlayer;
-
       startPresentation(videoPlayer);
+
+      if (payload.initialState) {
+        applyVideoState(sharedVideo.player, payload.initialState);
+      }
 
       document.getElementById('open-youtube-modal').classList.add('hidden');
       if (isSharer) {
@@ -566,13 +548,8 @@ async function joinChannel(roomId, name) {
     });
 
     channel.on('direct_video_state_change', (payload) => {
-      if (peerId !== sharerId && sharedVideo.player) {
-        sharedVideo.player.currentTime = payload.time;
-        if (payload.state === 'play') {
-          sharedVideo.player.play();
-        } else {
-          sharedVideo.player.pause();
-        }
+      if (peerId !== sharerId) {
+        applyVideoState(sharedVideo.player, payload);
       }
     });
 
@@ -605,6 +582,13 @@ async function joinChannel(roomId, name) {
 
     channel.on('screen_share_stopped', () => {
       console.log("screen_share_stopped event received.");
+
+      if (sharerId && peerVideoElements[sharerId]) {
+        peerVideoElements[sharerId].videoContainer.remove();
+        delete peerVideoElements[sharerId];
+        console.log(`Cleaned up video element map for peer ${sharerId}.`);
+      }
+
       sharerId = null;
       activeSharing = null;
       stopPresentation();
@@ -617,6 +601,11 @@ async function joinChannel(roomId, name) {
       startPresentation(whiteboardContainer);
       whiteboard.init();
       whiteboard.resize();
+
+      if (payload.history) {
+        console.log("Applying whiteboard history for late joiner.");
+        payload.history.forEach(data => whiteboard.draw(data));
+      }
 
       document.getElementById('toggle-whiteboard').classList.add('hidden');
       document.getElementById('toggle-screen-share').classList.add('hidden');
@@ -676,9 +665,12 @@ export const Room = {
     const name = this.el.dataset.name;
     document.getElementById('name-overlay-local').innerText = name;
 
-    await createPeerConnection();
     await setupLocalMedia();
     if (!localStream) return;
+    
+    // We must join the channel before we can create the peer connection,
+    // because the peer connection setup depends on the channel.
+    // The channel.join() is now async and handles the peer connection creation internally.
     joinChannel(roomId, name);
 
     loadYoutubeAPI();
@@ -708,8 +700,8 @@ export const Room = {
     const leaveRoom = document.getElementById('leave-room');
     leaveRoom.addEventListener('click', () => {
       channel.leave();
-      pc.close();
-      localStream.getTracks().forEach((track) => track.stop());
+      if(pc) pc.close();
+      if(localStream) localStream.getTracks().forEach((track) => track.stop());
       window.location.href = '/';
     });
 
@@ -934,16 +926,7 @@ function handleChatVisibility() {
     if (this.isScreenSharing) return;
 
     try {
-      const displayMediaOptions = {
-        video: {
-          cursor: "always",
-          latencyHint: "motion",
-          width: { max: 1280 },
-          height: { max: 720 },
-          frameRate: { max: 15 }
-        }
-      };
-      this.screenShareStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      this.screenShareStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     } catch (err) {
       console.error("Error starting screen share:", err);
       return;
@@ -958,11 +941,13 @@ function handleChatVisibility() {
     }
 
     this.originalVideoTrack = videoSender.track;
-    videoSender.replaceTrack(screenTrack);
+    await videoSender.replaceTrack(screenTrack);
     this.isScreenSharing = true;
     activeSharing = 'screen';
 
     channel.push('screen_share_started', { sharer_id: peerId });
+    channel.push("webrtc_renegotiate", {});
+
 
     // Create a temporary video element for the local screen share
     localScreenShareVideoElement = document.createElement('div'); // Use div as container
@@ -986,9 +971,6 @@ function handleChatVisibility() {
 
     startPresentation(localScreenShareVideoElement); // Pass this temporary element
 
-    // The local camera feed (video-container-local) will be moved to filmstrip by startPresentation
-    // No need to hide it explicitly.
-
     document.getElementById('open-youtube-modal').classList.add('hidden');
     document.getElementById('toggle-screen-share').classList.add('hidden');
     document.getElementById('stop-sharing-button').classList.remove('hidden');
@@ -998,12 +980,12 @@ function handleChatVisibility() {
     };
   },
 
-  stopScreenShare() {
+  async stopScreenShare() {
     if (!this.isScreenSharing) return;
 
     const videoSender = pc.getSenders().find(s => s.track.kind === 'video');
     if (videoSender) {
-      videoSender.replaceTrack(this.originalVideoTrack);
+      await videoSender.replaceTrack(this.originalVideoTrack);
     }
 
     this.screenShareStream.getTracks().forEach(track => track.stop());
@@ -1013,20 +995,16 @@ function handleChatVisibility() {
     this.originalVideoTrack = null;
 
     channel.push('screen_share_stopped', {});
+    // After replacing the track, we must trigger a renegotiation so that other
+    // peers are notified of the track change.
+    channel.push("webrtc_renegotiate", {});
+
 
     // Remove the local screen share video element from mainStage
     if (localScreenShareVideoElement && mainStage.contains(localScreenShareVideoElement)) {
       mainStage.removeChild(localScreenShareVideoElement);
     }
     localScreenShareVideoElement = null; // Clear the reference
-
-    stopPresentation(); // This will revert the layout
-
-    // Show local camera feed again
-    const localCameraContainer = document.getElementById('video-container-local');
-    if (localCameraContainer) {
-      localCameraContainer.classList.remove('hidden');
-    }
 
     document.getElementById('open-youtube-modal').classList.remove('hidden');
     document.getElementById('toggle-screen-share').classList.remove('hidden');
