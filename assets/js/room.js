@@ -404,6 +404,13 @@ async function joinChannel(roomId, name) {
             return;
           }
 
+          // Re-add local tracks if localStream is available
+          if (localStream && !localTracksAdded) {
+            console.log('Re-adding local tracks to new peer connection');
+            localStream.getTracks().forEach((track) => pc.addTrack(track));
+            localTracksAdded = true;
+          }
+          
           if (resp.shared_video) {
             const video = resp.shared_video;
             const history = resp.whiteboard_history;
@@ -444,27 +451,30 @@ async function joinChannel(roomId, name) {
         channel.on('youtube_video_shared', (payload) => {
           sharerId = payload.sharer_id;
           const videoId = payload.video_id;
-
+        
           const wrapper = document.createElement('div');
-          wrapper.style.cssText = 'position: relative; width: 100%; height: 100%;';
-
+          wrapper.style.cssText = 'display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;';
+        
           const playerDiv = document.createElement('div');
           playerDiv.id = 'youtube-player';
-          playerDiv.className = 'w-full h-full';
+          playerDiv.style.cssText = 'max-width: 100%; max-height: 100%;';
+          
           wrapper.appendChild(playerDiv);
-        
+          
           const isSharer = peerId === sharerId;
-
+        
           if (!isSharer) {
             const overlay = document.createElement('div');
             overlay.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;';
             wrapper.appendChild(overlay);
           }
-
+        
           startPresentation(wrapper);
         
           youtubePlayer = new YT.Player('youtube-player', {
             videoId: videoId,
+            width: '100%',
+            height: '100%',
             playerVars: {
               autoplay: 1,
               controls: isSharer ? 1 : 0,
@@ -473,12 +483,15 @@ async function joinChannel(roomId, name) {
             },
             events: {
               onReady: (event) => {
+                event.target.getIframe().style.aspectRatio = '16 / 9';
+
                 if (isSharer) {
                   channel.push('player_state_change', {
                     state: event.target.getPlayerState(),
                     time: event.target.getCurrentTime(),
                   });
                 } else if (initialYoutubeState) {
+                  console.log("Applying initial YouTube state for late joiner:", initialYoutubeState);
                   applyVideoState(event.target, initialYoutubeState);
                   initialYoutubeState = null;
                 }
