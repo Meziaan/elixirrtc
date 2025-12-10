@@ -35,6 +35,7 @@ let peerVideoElements = {}; // New map to store video elements per peer
 let localScreenShareVideoElement = null; // To hold the local screen share video element
 let sharedVideo = {player: null, hls: null};
 let whiteboard = null;
+let activeSharing = null;
 
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
@@ -140,21 +141,31 @@ async function createPeerConnection() {
       console.log("pc.ontrack debug:", {
         trackLabel: event.track.label,
         remotePeerId: remotePeerId,
-        globalSharerId: sharerId
+        globalSharerId: sharerId,
+        activeSharing: activeSharing
       });
 
-      if (remotePeerId === sharerId) {
+      if (activeSharing === 'screen' && remotePeerId === sharerId) {
         // This is the active screen share, put it in mainStage
         startPresentation(videoContainer);
         console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
-
       } else {
-        // Regular camera feed or inactive screen share, add to videoPlayerWrapper
-        // Ensure it's not already in videoPlayerWrapper or filmstrip
-        if (!videoPlayerWrapper.contains(videoContainer) && !filmstrip.contains(videoContainer)) {
-          videoPlayerWrapper.appendChild(videoContainer);
+        // Regular camera feed.
+        // Check if a presentation is active. The `presentationLayout` will NOT have the 'hidden' class.
+        const isPresentationActive = !presentationLayout.classList.contains('hidden');
+
+        if (isPresentationActive) {
+          // If presentation is active, add non-presenters to the filmstrip
+          if (!filmstrip.contains(videoContainer)) {
+            filmstrip.appendChild(videoContainer);
+          }
+        } else {
+          // Otherwise, add to the main video grid
+          if (!videoPlayerWrapper.contains(videoContainer)) {
+            videoPlayerWrapper.appendChild(videoContainer);
+          }
         }
-        updateVideoGrid();
+        updateVideoGrid(); // This might still be useful to recalculate grid layout if we switch back
       }
 
       event.track.onended = (_) => {
@@ -583,7 +594,7 @@ async function joinChannel(roomId, name) {
     channel.on('screen_share_started', (payload) => {
       console.log("screen_share_started event received:", payload);
       sharerId = payload.sharer_id;
-      this.activeSharing = 'screen';
+      activeSharing = 'screen';
 
       const screenShareVideoContainer = peerVideoElements[sharerId]?.videoContainer;
       if (screenShareVideoContainer) {
@@ -595,13 +606,13 @@ async function joinChannel(roomId, name) {
     channel.on('screen_share_stopped', () => {
       console.log("screen_share_stopped event received.");
       sharerId = null;
-      this.activeSharing = null;
+      activeSharing = null;
       stopPresentation();
     });
 
     channel.on('whiteboard_started', (payload) => {
       sharerId = payload.sharer_id;
-      this.activeSharing = 'whiteboard';
+      activeSharing = 'whiteboard';
       
       startPresentation(whiteboardContainer);
       whiteboard.init();
@@ -617,7 +628,7 @@ async function joinChannel(roomId, name) {
 
     channel.on('whiteboard_stopped', () => {
       sharerId = null;
-      this.activeSharing = null;
+      activeSharing = null;
       whiteboard.destroy();
       stopPresentation();
       
@@ -659,7 +670,6 @@ export const Room = {
   isScreenSharing: false,
   screenShareStream: null,
   originalVideoTrack: null,
-  activeSharing: null,
 
   async mounted() {
     const roomId = this.el.dataset.roomId;
@@ -855,13 +865,13 @@ function handleChatVisibility() {
       const youtubeVideoId = extractYoutubeVideoId(url);
 
       if (youtubeVideoId) {
-        this.activeSharing = 'youtube';
+        activeSharing = 'youtube';
         channel.push('share_youtube_video', { video_id: youtubeVideoId });
       } else if (url.match(/\.mp4$|\.webm$|\.ogg$/)) {
-        this.activeSharing = 'direct';
+        activeSharing = 'direct';
         channel.push('share_direct_video', { url: url });
       } else if (url.match(/^https:\/\/www\.heales\.com\/video\//)) {
-        this.activeSharing = 'direct';
+        activeSharing = 'direct';
         channel.push('share_heales_video', { url: url });
       } else {
         alert('Please enter a valid YouTube, direct video, or Heales video URL.');
@@ -871,11 +881,11 @@ function handleChatVisibility() {
     });
 
     stopSharingButton.addEventListener('click', () => {
-      if (this.activeSharing === 'screen') {
+      if (activeSharing === 'screen') {
         this.stopScreenShare();
-      } else if (this.activeSharing === 'whiteboard') {
+      } else if (activeSharing === 'whiteboard') {
         this.stopWhiteboard();
-      } else if (this.activeSharing === 'youtube' || this.activeSharing === 'direct') {
+      } else if (activeSharing === 'youtube' || activeSharing === 'direct') {
         channel.push('stop_video_share', {});
       }
     });
@@ -884,7 +894,7 @@ function handleChatVisibility() {
 
     // Whiteboard logic
     document.getElementById('toggle-whiteboard').addEventListener('click', () => {
-      if (this.activeSharing === 'whiteboard') {
+      if (activeSharing === 'whiteboard') {
         this.stopWhiteboard();
       } else {
         this.startWhiteboard();
@@ -907,12 +917,12 @@ function handleChatVisibility() {
       alert('Another user is already presenting.');
       return;
     }
-    this.activeSharing = 'whiteboard';
+    activeSharing = 'whiteboard';
     channel.push('start_whiteboard', {});
   },
 
   stopWhiteboard() {
-    this.activeSharing = null;
+    activeSharing = null;
     channel.push('stop_whiteboard', {});
   },
 
@@ -950,7 +960,7 @@ function handleChatVisibility() {
     this.originalVideoTrack = videoSender.track;
     videoSender.replaceTrack(screenTrack);
     this.isScreenSharing = true;
-    this.activeSharing = 'screen';
+    activeSharing = 'screen';
 
     channel.push('screen_share_started', { sharer_id: peerId });
 
