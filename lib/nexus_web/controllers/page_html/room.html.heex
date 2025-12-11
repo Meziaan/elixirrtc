@@ -1,5 +1,5 @@
 <div id="room" phx-hook="Room" data-room-id={@room_id} data-name={@name} class="h-full flex flex-col justify-center items-center gap-4 p-4">
-  <div id="join-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max-w-2xl" role="alert">
+  <div id="join-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max_w-2xl" role="alert">
     <strong class="font-bold">Error!</strong>
     <span class="block sm:inline"></span>
   </div>
@@ -85,13 +85,13 @@
     <button id="copy-link" class="bg-zinc-500 hover:bg-zinc-600 text-white font-bold p-3 rounded-full" title="Copy invite link">
       <.icon name="hero-link-solid" class="h-6 w-6" />
     </button>
-    <button id="open-youtube-modal" phx-click={show_modal("youtube-share-modal")} class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full" title="Share YouTube Video">
+    <button id="open-youtube-modal" phx-click={show_modal("youtube-share-modal")} class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Share YouTube Video">
       <.icon name="hero-play-circle-solid" class="h-6 w-6" />
     </button>
     <button id="toggle-screen-share" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Share Screen">
       <.icon name="hero-computer-desktop-solid" class="h-6 w-6" />
     </button>
-    <button id="toggle-whiteboard" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full" title="Start Whiteboard">
+    <button id="toggle-whiteboard" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Start Whiteboard">
       <.icon name="hero-paint-brush-solid" class="h-6 w-6" />
     </button>
     <button id="stop-sharing-button" class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full hidden" title="Stop Sharing">

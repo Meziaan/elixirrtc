@@ -38,6 +38,22 @@ let sharedVideo = {player: null, hls: null};
 let whiteboard = null;
 let activeSharing = null;
 
+function showError(message) {
+  const errorNode = document.getElementById('join-error-message');
+  if (errorNode) {
+    errorNode.innerText = message;
+    errorNode.classList.remove('hidden');
+  }
+}
+
+function hideError() {
+  const errorNode = document.getElementById('join-error-message');
+  if (errorNode) {
+    errorNode.classList.add('hidden');
+    errorNode.innerText = '';
+  }
+}
+
 function loadYoutubeAPI() {
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
@@ -164,48 +180,28 @@ async function createPeerConnection() {
 
       videoPlayer.srcObject = event.streams[0];
 
-      console.log("pc.ontrack debug:", {
-        trackLabel: event.track.label,
-        remotePeerId: remotePeerId,
-        globalSharerId: sharerId,
-        activeSharing: activeSharing
-      });
-
       if (activeSharing === 'screen' && remotePeerId === sharerId) {
-        // This is the active screen share, put it in mainStage
         startPresentation(videoContainer);
-        console.log(`Screen share from ${userName} (${remotePeerId}) moved to main stage.`);
       } else {
-        // Regular camera feed.
         const isPresentationActive = !presentationLayout.classList.contains('hidden');
 
         if (isPresentationActive) {
-          // If presentation is active, add non-presenters to the filmstrip
           if (!filmstrip.contains(videoContainer)) {
             filmstrip.appendChild(videoContainer);
           }
         } else {
-          // Otherwise, add to the main video grid
           if (!videoPlayerWrapper.contains(videoContainer)) {
             videoPlayerWrapper.appendChild(videoContainer);
           }
         }
-        updateVideoGrid(); // This might still be useful to recalculate grid layout if we switch back
+        updateVideoGrid();
       }
 
-      event.track.onended = (_) => {
+      event.track.onended = () => {
         console.log('Track ended: ' + event.track.id);
-        // The important cleanup logic was racy here and has been moved to the
-        // deterministic 'screen_share_stopped' event handler.
       };
     } else if (event.track.kind == 'audio') {
-      if (!event.streams || event.streams.length === 0 || !event.streams[0]) {
-        console.warn('Received audio track without an associated stream.', event);
-        return;
-      }
-      console.log('New audio track added for stream: ' + event.streams[0].id);
-    } else {
-      console.log('New track added: ' + event.track.kind);
+      // Handle audio tracks if necessary
     }
   };
 
@@ -214,24 +210,21 @@ async function createPeerConnection() {
 
   pc.onconnectionstatechange = () => {
     console.log('Connection state change: ' + pc.connectionState);
-    const errorNode = document.getElementById('join-error-message');
-
-    if (!errorNode) return; // Ensure errorNode exists
-
-    if (pc.connectionState == 'failed') {
-      errorNode.innerText = 'Connection unstable. Attempting to reconnect...';
-      errorNode.classList.remove('hidden');
-    } else if (pc.connectionState == 'disconnected') {
-      errorNode.innerText = 'Disconnected. Attempting to reconnect...';
-      errorNode.classList.remove('hidden');
-    } else if (pc.connectionState == 'connected') {
-      // Always hide the error message when connected, regardless of previous state
-      errorNode.classList.add('hidden');
-      errorNode.innerText = '';
+    switch (pc.connectionState) {
+      case 'connected':
+        hideError();
+        break;
+      case 'disconnected':
+        showError('Media connection lost. Attempting to reconnect...');
+        break;
+      case 'failed':
+        showError('Media connection failed. Please refresh to rejoin.');
+        // In a more robust implementation, you might try an ICE restart here.
+        // pc.restartIce();
+        break;
     }
-    // For 'new' and 'connecting' states, we don't explicitly hide or show a message
-    // unless it's already showing a 'disconnected' or 'failed' message.
   };
+
   pc.onicecandidate = (event) => {
     if (event.candidate == null) {
       console.log('Gathering candidates complete');
@@ -239,41 +232,35 @@ async function createPeerConnection() {
     }
 
     const candidate = JSON.stringify(event.candidate);
-    console.log('Sending ICE candidate: ' + candidate);
     channel.push('ice_candidate', { body: candidate });
   };
 }
 
 async function setupLocalMedia() {
-  console.log('Setting up local media stream');
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: true,
     });
-    console.log('Successfully obtained local media stream:', localStream);
     setupPreview();
   } catch (error) {
     console.error('Error accessing media devices:', error);
-    const errorNode = document.getElementById('join-error-message');
-    if (errorNode) {
-      errorNode.innerText = 'Could not access webcam and microphone. Please ensure permissions are granted and no other application is using the camera.';
-      errorNode.classList.remove('hidden');
+    switch(error.name) {
+      case 'NotAllowedError':
+        showError('Permissions for camera/microphone denied. Please grant access and refresh.');
+        break;
+      case 'NotFoundError':
+        showError('No camera/microphone found. Please ensure your devices are connected and enabled.');
+        break;
+      default:
+        showError('Could not access webcam and microphone. Please ensure permissions are granted and no other application is using the camera.');
     }
   }
 }
 
 function setupPreview() {
-  console.log('Setting up local video preview.');
   if (localVideoPlayer) {
-    console.log('localVideoPlayer element found:', localVideoPlayer);
     localVideoPlayer.srcObject = localStream;
-    console.log('localVideoPlayer.srcObject set to:', localVideoPlayer.srcObject);
-    if (!localStream) {
-      console.error('localStream is not set when trying to set up preview.');
-    }
-  } else {
-    console.error('localVideoPlayer element not found.');
   }
 }
 
@@ -282,17 +269,13 @@ async function joinChannel(roomId, name) {
   socket.connect();
 
   socket.onOpen(() => {
-    console.log("Phoenix Socket reconnected. Requesting WebRTC renegotiation.");
-    // Push an event to the channel to request a new SDP offer from the server
+    console.log("Phoenix Socket reconnected.");
+    hideError();
     channel.push("webrtc_renegotiate", {});
-    // Also explicitly hide the error message on socket reconnection,
-    // assuming WebRTC will follow shortly. This provides a quicker visual feedback.
-    const errorNode = document.getElementById('join-error-message');
-    if (errorNode && !errorNode.classList.contains('hidden')) {
-      errorNode.classList.add('hidden');
-      errorNode.innerText = '';
-      console.log("Hidden error message on Phoenix Socket reconnection.");
-    }
+  });
+
+  socket.onError(() => {
+    showError("Could not connect to the server. Attempting to reconnect...");
   });
 
   channel = socket.channel(`peer:${roomId}`, { name: name });
@@ -300,26 +283,22 @@ async function joinChannel(roomId, name) {
 
 
   channel.onError(() => {
-    console.error('Phoenix channel error!');
-    // Let the socket handle reconnection attempts
+    showError("Lost connection to the room. Attempting to reconnect...");
   });
+
   channel.onClose(() => {
-    console.warn('Phoenix channel closed!');
-    // Let the socket handle reconnection attempts
+    showError("You have been disconnected from the room.");
   });
 
   channel.on('sdp_offer', async (payload) => {
-    const sdpOffer = payload.body;
-
     console.log('SDP offer received');
 
-    // Check if pc is null before proceeding
     if (!pc) {
       console.warn('Received SDP offer but PeerConnection is null. Skipping.');
       return;
     }
 
-    await pc.setRemoteDescription({ type: 'offer', sdp: sdpOffer });
+    await pc.setRemoteDescription({ type: 'offer', sdp: payload.body });
 
     if (!localTracksAdded) {
       console.log('Adding local tracks to peer connection');
@@ -331,19 +310,16 @@ async function joinChannel(roomId, name) {
     await pc.setLocalDescription(sdpAnswer);
 
     console.log('SDP offer applied, forwarding SDP answer');
-    const answer = pc.localDescription;
-    channel.push('sdp_answer', { body: answer.sdp });
+    channel.push('sdp_answer', { body: sdpAnswer.sdp });
   });
 
   channel.on('ice_candidate', (payload) => {
-    // Check if pc is null before proceeding
     if (!pc) {
       console.warn('Received ICE candidate but PeerConnection is null. Skipping.');
       return;
     }
 
     const candidate = JSON.parse(payload.body);
-    console.log('Received ICE candidate: ' + payload.body);
     pc.addIceCandidate(candidate);
   });
 
@@ -379,7 +355,6 @@ async function joinChannel(roomId, name) {
     
       presence.onLeave((id, _current, { metas: [user, ..._] }) => {
         delete presences[id];
-        // When a peer leaves, remove their video container from the DOM and peerVideoElements map
         const videoContainer = peerVideoElements[id]?.videoContainer;
         if (videoContainer) {
           videoContainer.remove();
@@ -395,18 +370,20 @@ async function joinChannel(roomId, name) {
           console.log('Joined channel successfully', resp);
           peerId = resp.peer_id;
 
-          // Now create the peer connection
+          if (pc) {
+            pc.close();
+            pc = null;
+            localTracksAdded = false;
+          }
+
           try {
             await createPeerConnection();
           } catch (error) {
             console.error("Failed to create PeerConnection on join:", error);
-            // Handle error appropriately
             return;
           }
 
-          // Re-add local tracks if localStream is available
           if (localStream && !localTracksAdded) {
-            console.log('Re-adding local tracks to new peer connection');
             localStream.getTracks().forEach((track) => pc.addTrack(track));
             localTracksAdded = true;
           }
@@ -438,14 +415,7 @@ async function joinChannel(roomId, name) {
           if(localStream) localStream.getTracks().forEach((track) => track.stop());
           localStream = undefined;
     
-          const errorNode = document.getElementById('join-error-message');
-          errorNode.innerText = 'Unable to join the room';
-          if (resp.reason == 'peer_limit_reached') {
-            errorNode.innerText += ': Peer limit reached. Try again in a few minutes';
-          } else if (resp.reason == 'peer_start_failed') {
-            errorNode.innerText += ': Failed to initialize your connection. Please try again.';
-          }
-          errorNode.classList.remove('hidden');
+          showError(`Unable to join the room: ${resp.reason || 'Unknown error'}`);
         });
     
         channel.on('youtube_video_shared', (payload) => {
@@ -491,7 +461,6 @@ async function joinChannel(roomId, name) {
                     time: event.target.getCurrentTime(),
                   });
                 } else if (initialYoutubeState) {
-                  console.log("Applying initial YouTube state for late joiner:", initialYoutubeState);
                   applyVideoState(event.target, initialYoutubeState);
                   initialYoutubeState = null;
                 }
@@ -582,24 +551,19 @@ async function joinChannel(roomId, name) {
     });
 
     channel.on('screen_share_started', (payload) => {
-      console.log("screen_share_started event received:", payload);
       sharerId = payload.sharer_id;
       activeSharing = 'screen';
 
       const screenShareVideoContainer = peerVideoElements[sharerId]?.videoContainer;
       if (screenShareVideoContainer) {
         startPresentation(screenShareVideoContainer);
-        console.log(`Screen share from ${sharerId} moved to main stage after sharerId update.`);
       }
     });
 
     channel.on('screen_share_stopped', () => {
-      console.log("screen_share_stopped event received.");
-
       if (sharerId && peerVideoElements[sharerId]) {
         peerVideoElements[sharerId].videoContainer.remove();
         delete peerVideoElements[sharerId];
-        console.log(`Cleaned up video element map for peer ${sharerId}.`);
       }
 
       sharerId = null;
@@ -616,7 +580,6 @@ async function joinChannel(roomId, name) {
       whiteboard.resize();
 
       if (payload.history) {
-        console.log("Applying whiteboard history for late joiner.");
         payload.history.forEach(data => whiteboard.draw(data));
       }
 
@@ -681,9 +644,6 @@ export const Room = {
     await setupLocalMedia();
     if (!localStream) return;
     
-    // We must join the channel before we can create the peer connection,
-    // because the peer connection setup depends on the channel.
-    // The channel.join() is now async and handles the peer connection creation internally.
     joinChannel(roomId, name);
 
     loadYoutubeAPI();
@@ -776,7 +736,6 @@ export const Room = {
       }
     };
 
-    // Initial state for desktop: chat should be hidden by default
     if (!isMobile()) {
       chatPanel.classList.add('md:hidden');
     }
@@ -800,7 +759,6 @@ export const Room = {
 
     // Handle chat visibility on window resize
     window.addEventListener('resize', handleChatVisibility);
-    // Initial call to set correct visibility based on screen size
     handleChatVisibility();    channel.on('new_message', (payload) => {
       if (!isChatOpen) {
         unreadMessages++;
@@ -845,18 +803,11 @@ function handleChatVisibility() {
     if (!chatContainer) return; // Ensure chatContainer exists
 
     if (isMobile()) {
-        // On mobile, if chat is visible, hide it.
         if (!chatContainer.classList.contains("translate-x-full")) {
             chatContainer.classList.add("translate-x-full");
             // Optionally, remove md:hidden if it was added for mobile
             chatContainer.classList.remove('md:hidden');
         }
-    }
-    else {
-        // On desktop, we don't automatically show/hide the chat based on window size.
-        // Its visibility is controlled by the toggle button.
-        // If it's desktop and chat is hidden, we do nothing here.
-        // If it's desktop and chat is shown, we do nothing here.
     }
 }
 
