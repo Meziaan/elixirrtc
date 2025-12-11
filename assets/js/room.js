@@ -21,6 +21,22 @@ const mainStage = document.getElementById('main-stage');
 const filmstrip = document.getElementById('filmstrip');
 const whiteboardContainer = document.getElementById('whiteboard-container');
 
+// NEW: Centralized State
+let state = {
+  peerId: null,
+  sharerId: null,
+  activeSharing: null,
+  peerVideoElements: {},
+  localTracksAdded: false
+};
+
+// NEW: Centralized state update function
+function setState(newState) {
+  const oldState = { ...state };
+  state = { ...oldState, ...newState };
+  console.log("State changed:", { old: oldState, new: state });
+}
+
 
 let localStream = undefined;
 let channel = undefined;
@@ -803,6 +819,7 @@ function handleChatVisibility() {
     if (!chatContainer) return; // Ensure chatContainer exists
 
     if (isMobile()) {
+        // On mobile, if chat is visible, hide it.
         if (!chatContainer.classList.contains("translate-x-full")) {
             chatContainer.classList.add("translate-x-full");
             // Optionally, remove md:hidden if it was added for mobile
