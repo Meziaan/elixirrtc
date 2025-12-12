@@ -23,7 +23,7 @@ defmodule Nexus.Room do
 
     %Room{}
     |> Room.changeset(%{uuid: room_id, started_at: DateTime.utc_now()})
-    |> Repo.insert()
+    |> Repo.insert(on_conflict: :nothing, conflict_target: :uuid)
 
     state = %{
       room_id: room_id,

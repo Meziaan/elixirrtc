@@ -19,5 +19,6 @@ defmodule Nexus.Data.Room do
     room
     |> cast(attrs, [:uuid, :started_at, :ended_at])
     |> validate_required([:uuid])
+    |> unique_constraint(:uuid)
   end
 end

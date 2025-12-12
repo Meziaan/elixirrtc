@@ -47,25 +47,36 @@ defmodule NexusWeb.PeerChannel do
       {:ok, id, shared_video, whiteboard_history, video_state} ->
         send(self(), {:after_join, shared_video, whiteboard_history, video_state})
 
-        room = Repo.get_by!(Room, uuid: room_id)
+        case Repo.get_by(Room, uuid: room_id) do
+          nil ->
+            Logger.error("Room #{room_id} not found in database after creation")
+            {:error, :room_not_found}
 
-        {:ok, participant} =
-          %Participant{}
-          |> Participant.changeset(%{
-            name: name,
-            joined_at: DateTime.utc_now(),
-            room_id: room.id
-          })
-          |> Repo.insert()
+          room ->
+            {:ok, participant} =
+              %Participant{}
+              |> Participant.changeset(%{
+                name: name,
+                joined_at: DateTime.utc_now(),
+                room_id: room.id
+              })
+              |> Repo.insert()
 
-        socket =
-          socket
-          |> assign(:peer, id)
-          |> assign(:name, name)
-          |> assign(:room_id, room_id)
-          |> assign(:participant_id, participant.id)
+            socket =
+              socket
+              |> assign(:peer, id)
+              |> assign(:name, name)
+              |> assign(:room_id, room_id)
+              |> assign(:participant_id, participant.id)
 
-        {:ok, %{peer_id: id, shared_video: shared_video, whiteboard_history: whiteboard_history, video_state: video_state}, socket}
+            {:ok,
+             %{
+               peer_id: id,
+               shared_video: shared_video,
+               whiteboard_history: whiteboard_history,
+               video_state: video_state
+             }, socket}
+        end
 
       {:error, _reason} = error ->
         error
@@ -96,20 +107,24 @@ defmodule NexusWeb.PeerChannel do
     Logger.info("Shared YouTube video: #{video_id} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
     
-    room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+    case Repo.get_by(Room, uuid: socket.assigns.room_id) do
+      nil ->
+        Logger.error("Room #{socket.assigns.room_id} not found when sharing YouTube video")
+        {:noreply, socket}
+      room ->
+        %SharedLink{}
+        |> SharedLink.changeset(%{
+          url: "https://www.youtube.com/watch?v=#{video_id}",
+          timestamp: DateTime.utc_now(),
+          room_id: room.id,
+          participant_id: socket.assigns.participant_id
+        })
+        |> Repo.insert()
 
-    %SharedLink{}
-    |> SharedLink.changeset(%{
-      url: "https://www.youtube.com/watch?v=#{video_id}",
-      timestamp: DateTime.utc_now(),
-      room_id: room.id,
-      participant_id: socket.assigns.participant_id
-    })
-    |> Repo.insert()
-
-    Rooms.set_shared_video(socket.assigns.room_id, %{type: :youtube, id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
-    broadcast!(socket, "youtube_video_shared", %{video_id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
-    {:noreply, socket}
+        Rooms.set_shared_video(socket.assigns.room_id, %{type: :youtube, id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
+        broadcast!(socket, "youtube_video_shared", %{video_id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -117,20 +132,24 @@ defmodule NexusWeb.PeerChannel do
     Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
     
-    room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+    case Repo.get_by(Room, uuid: socket.assigns.room_id) do
+      nil ->
+        Logger.error("Room #{socket.assigns.room_id} not found when sharing direct video")
+        {:noreply, socket}
+      room ->
+        %SharedLink{}
+        |> SharedLink.changeset(%{
+          url: url,
+          timestamp: DateTime.utc_now(),
+          room_id: room.id,
+          participant_id: socket.assigns.participant_id
+        })
+        |> Repo.insert()
 
-    %SharedLink{}
-    |> SharedLink.changeset(%{
-      url: url,
-      timestamp: DateTime.utc_now(),
-      room_id: room.id,
-      participant_id: socket.assigns.participant_id
-    })
-    |> Repo.insert()
-
-    Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: url, sender: socket.assigns.name, sharer_id: sharer_id})
-    broadcast!(socket, "new_direct_video", %{url: url, sender: socket.assigns.name, sharer_id: sharer_id})
-    {:noreply, socket}
+        Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: url, sender: socket.assigns.name, sharer_id: sharer_id})
+        broadcast!(socket, "new_direct_video", %{url: url, sender: socket.assigns.name, sharer_id: sharer_id})
+        {:noreply, socket}
+    end
   end
 
   def handle_in("share_heales_video", %{"url" => url}, socket) do
@@ -146,19 +165,24 @@ defmodule NexusWeb.PeerChannel do
           video_url = "https://www.heales.com/video/assets/videos/hls_output/" <> vid <> "/index.m3u8"
           sharer_id = socket.assigns.peer
           
-          room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+          case Repo.get_by(Room, uuid: socket.assigns.room_id) do
+            nil ->
+              Logger.error("Room #{socket.assigns.room_id} not found when sharing Heales video")
+              {:noreply, socket}
+            room ->
+              %SharedLink{}
+              |> SharedLink.changeset(%{
+                url: video_url,
+                timestamp: DateTime.utc_now(),
+                room_id: room.id,
+                participant_id: socket.assigns.participant_id
+              })
+              |> Repo.insert()
 
-          %SharedLink{}
-          |> SharedLink.changeset(%{
-            url: video_url,
-            timestamp: DateTime.utc_now(),
-            room_id: room.id,
-            participant_id: socket.assigns.participant_id
-          })
-          |> Repo.insert()
-
-          Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
-          broadcast!(socket, "new_direct_video", %{url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
+              Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
+              broadcast!(socket, "new_direct_video", %{url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
+              {:noreply, socket}
+          end
       end
     rescue e ->
       Logger.error("Failed to parse Heales URL: #{inspect(e)}")
@@ -175,24 +199,28 @@ defmodule NexusWeb.PeerChannel do
 
   @impl true
   def handle_in("new_message", %{"body" => body}, socket) do
-    room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+    case Repo.get_by(Room, uuid: socket.assigns.room_id) do
+      nil ->
+        Logger.error("Room #{socket.assigns.room_id} not found when sending new message")
+        {:noreply, socket}
+      room ->
+        %ChatMessage{}
+        |> ChatMessage.changeset(%{
+          message: body,
+          timestamp: DateTime.utc_now(),
+          room_id: room.id,
+          participant_id: socket.assigns.participant_id
+        })
+        |> Repo.insert()
 
-    %ChatMessage{}
-    |> ChatMessage.changeset(%{
-      message: body,
-      timestamp: DateTime.utc_now(),
-      room_id: room.id,
-      participant_id: socket.assigns.participant_id
-    })
-    |> Repo.insert()
+        broadcast!(socket, "new_message", %{
+          name: socket.assigns.name,
+          body: body,
+          timestamp: NaiveDateTime.utc_now() |> to_string()
+        })
 
-    broadcast!(socket, "new_message", %{
-      name: socket.assigns.name,
-      body: body,
-      timestamp: NaiveDateTime.utc_now() |> to_string()
-    })
-
-    {:noreply, socket}
+        {:noreply, socket}
+    end
   end
 
   @impl true
