@@ -56,6 +56,10 @@ config :nexus,
   admin_username: "admin",
   admin_password: "admin"
 
+config :nexus, ecto_repos: [Nexus.Repo], priv: "priv/repo"
+
+config :ecto_sql, ecto_repos: [Nexus.Repo]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

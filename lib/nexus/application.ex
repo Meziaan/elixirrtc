@@ -14,6 +14,7 @@ defmodule Nexus.Application do
   def start(_type, _args) do
     children = [
       NexusWeb.Telemetry,
+      Nexus.Repo,
       {DNSCluster, query: Application.get_env(:nexus, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Nexus.PubSub},
       # Start a worker by calling: Nexus.Worker.start_link(arg)

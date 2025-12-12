@@ -5,6 +5,11 @@ defmodule NexusWeb.PeerChannel do
 
   require Logger
 
+  alias Nexus.Repo
+  alias Nexus.Data.Room
+  alias Nexus.Data.Participant
+  alias Nexus.Data.ChatMessage
+  alias Nexus.Data.SharedLink
   alias Nexus.{Peer, Rooms}
   alias NexusWeb.Presence
 
@@ -42,11 +47,23 @@ defmodule NexusWeb.PeerChannel do
       {:ok, id, shared_video, whiteboard_history, video_state} ->
         send(self(), {:after_join, shared_video, whiteboard_history, video_state})
 
+        room = Repo.get_by!(Room, uuid: room_id)
+
+        {:ok, participant} =
+          %Participant{}
+          |> Participant.changeset(%{
+            name: name,
+            joined_at: DateTime.utc_now(),
+            room_id: room.id
+          })
+          |> Repo.insert()
+
         socket =
           socket
           |> assign(:peer, id)
           |> assign(:name, name)
           |> assign(:room_id, room_id)
+          |> assign(:participant_id, participant.id)
 
         {:ok, %{peer_id: id, shared_video: shared_video, whiteboard_history: whiteboard_history, video_state: video_state}, socket}
 
@@ -78,6 +95,18 @@ defmodule NexusWeb.PeerChannel do
   def handle_in("share_youtube_video", %{"video_id" => video_id}, socket) do
     Logger.info("Shared YouTube video: #{video_id} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
+    
+    room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+
+    %SharedLink{}
+    |> SharedLink.changeset(%{
+      url: "https://www.youtube.com/watch?v=#{video_id}",
+      timestamp: DateTime.utc_now(),
+      room_id: room.id,
+      participant_id: socket.assigns.participant_id
+    })
+    |> Repo.insert()
+
     Rooms.set_shared_video(socket.assigns.room_id, %{type: :youtube, id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
     broadcast!(socket, "youtube_video_shared", %{video_id: video_id, sender: socket.assigns.name, sharer_id: sharer_id})
     {:noreply, socket}
@@ -87,6 +116,18 @@ defmodule NexusWeb.PeerChannel do
   def handle_in("share_direct_video", %{"url" => url}, socket) do
     Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
+    
+    room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+
+    %SharedLink{}
+    |> SharedLink.changeset(%{
+      url: url,
+      timestamp: DateTime.utc_now(),
+      room_id: room.id,
+      participant_id: socket.assigns.participant_id
+    })
+    |> Repo.insert()
+
     Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: url, sender: socket.assigns.name, sharer_id: sharer_id})
     broadcast!(socket, "new_direct_video", %{url: url, sender: socket.assigns.name, sharer_id: sharer_id})
     {:noreply, socket}
@@ -104,6 +145,18 @@ defmodule NexusWeb.PeerChannel do
           # This URL format was discovered by inspecting the minified javascript on the Heales video page.
           video_url = "https://www.heales.com/video/assets/videos/hls_output/" <> vid <> "/index.m3u8"
           sharer_id = socket.assigns.peer
+          
+          room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+
+          %SharedLink{}
+          |> SharedLink.changeset(%{
+            url: video_url,
+            timestamp: DateTime.utc_now(),
+            room_id: room.id,
+            participant_id: socket.assigns.participant_id
+          })
+          |> Repo.insert()
+
           Rooms.set_shared_video(socket.assigns.room_id, %{type: :direct, url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
           broadcast!(socket, "new_direct_video", %{url: video_url, sender: socket.assigns.name, sharer_id: sharer_id})
       end
@@ -122,6 +175,17 @@ defmodule NexusWeb.PeerChannel do
 
   @impl true
   def handle_in("new_message", %{"body" => body}, socket) do
+    room = Repo.get_by!(Room, uuid: socket.assigns.room_id)
+
+    %ChatMessage{}
+    |> ChatMessage.changeset(%{
+      message: body,
+      timestamp: DateTime.utc_now(),
+      room_id: room.id,
+      participant_id: socket.assigns.participant_id
+    })
+    |> Repo.insert()
+
     broadcast!(socket, "new_message", %{
       name: socket.assigns.name,
       body: body,
@@ -266,5 +330,16 @@ defmodule NexusWeb.PeerChannel do
 
     if event, do: push(socket, event, %{})
     {:noreply, socket}
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    participant = Repo.get!(Participant, socket.assigns.participant_id)
+
+    participant
+    |> Participant.changeset(%{left_at: DateTime.utc_now()})
+    |> Repo.update()
+
+    :ok
   end
 end

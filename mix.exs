@@ -53,6 +53,8 @@ defmodule Nexus.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.2"},
       {:ex_webrtc, "~> 0.15.0"},
+      {:ecto_sql, "~> 3.10"},
+      {:postgrex, ">= 0.0.0"},
 
       # Dialyzer and credo
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},

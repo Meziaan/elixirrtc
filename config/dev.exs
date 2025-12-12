@@ -42,6 +42,14 @@ config :nexus, NexusWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
+config :nexus, Nexus.Repo,
+  database: "nexus_dev",
+  hostname: System.get_env("DB_HOSTNAME", "localhost"),
+  username: System.get_env("DB_USERNAME", "postgres"),
+  password: System.get_env("DB_PASSWORD", "postgres"),
+  pool_size: 10,
+  show_sensitive_data_on_connection_error: true
+
 # Watch static and templates for browser reloading.
 config :nexus, NexusWeb.Endpoint,
   live_reload: [

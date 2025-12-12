@@ -5,6 +5,8 @@ defmodule Nexus.Room do
 
   require Logger
 
+  alias Nexus.Repo
+  alias Nexus.Data.Room
   alias Nexus.{Peer, PeerSupervisor}
   alias NexusWeb.PeerChannel
 
@@ -18,6 +20,10 @@ defmodule Nexus.Room do
   @impl true
   def init(room_id) do
     {:ok, _} = Registry.register(Nexus.RoomRegistry, room_id, self())
+
+    %Room{}
+    |> Room.changeset(%{uuid: room_id, started_at: DateTime.utc_now()})
+    |> Repo.insert()
 
     state = %{
       room_id: room_id,

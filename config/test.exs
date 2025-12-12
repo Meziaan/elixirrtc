@@ -7,6 +7,13 @@ config :nexus, NexusWeb.Endpoint,
   secret_key_base: "jnqiMUTku5atQODwJ2z4vMeU6kal0Av2djgp/I9f5jE6CGNUUZjxDBridCFC3xI2",
   server: false
 
+config :nexus, Nexus.Repo,
+  database: "nexus_test",
+  hostname: "localhost",
+  username: "postgres",
+  password: "postgres",
+  pool: Ecto.Adapters.SQL.Sandbox
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
