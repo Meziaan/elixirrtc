@@ -13,20 +13,17 @@ defmodule Nexus.Room do
   @peer_ready_timeout_s 10
   @peer_limit 32
 
-  def start_link(room_id) do
-    GenServer.start_link(__MODULE__, room_id)
+  def start_link(room_data) do
+    GenServer.start_link(__MODULE__, room_data)
   end
 
   @impl true
-  def init(room_id) do
-    {:ok, _} = Registry.register(Nexus.RoomRegistry, room_id, self())
-
-    %Room{}
-    |> Room.changeset(%{uuid: room_id, started_at: DateTime.utc_now()})
-    |> Repo.insert(on_conflict: :nothing, conflict_target: :uuid)
+  def init(%{uuid: room_uuid, name: room_name}) do
+    {:ok, _} = Registry.register(Nexus.RoomRegistry, room_uuid, self())
 
     state = %{
-      room_id: room_id,
+      room_id: room_uuid,
+      room_name: room_name,
       peers: %{},
       pending_peers: %{},
       peer_pid_to_id: %{},

@@ -4,6 +4,7 @@ defmodule Nexus.Data.Room do
 
   schema "rooms" do
     field :uuid, :string
+    field :name, :string
     field :started_at, :utc_datetime
     field :ended_at, :utc_datetime
 
@@ -17,8 +18,7 @@ defmodule Nexus.Data.Room do
   @doc false
   def changeset(room, attrs) do
     room
-    |> cast(attrs, [:uuid, :started_at, :ended_at])
-    |> validate_required([:uuid])
-    |> unique_constraint(:uuid)
+    |> cast(attrs, [:uuid, :name, :started_at, :ended_at])
+    |> validate_required([:uuid, :name])
   end
 end
