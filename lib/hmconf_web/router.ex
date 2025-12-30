@@ -1,5 +1,5 @@
-defmodule NexusWeb.Router do
-  use NexusWeb, :router
+defmodule HmconfWeb.Router do
+  use HmconfWeb, :router
 
   import Phoenix.LiveDashboard.Router
 
@@ -7,7 +7,7 @@ defmodule NexusWeb.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, html: {NexusWeb.Layouts, :root}
+    plug :put_root_layout, html: {HmconfWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
   end
@@ -16,25 +16,25 @@ defmodule NexusWeb.Router do
     plug :admin_auth
   end
 
-  scope "/", NexusWeb do
+  scope "/", HmconfWeb do
     pipe_through :browser
 
     get "/", PageController, :home
     get "/:room_id", PageController, :room
   end
 
-  scope "/admin", NexusWeb do
+  scope "/admin", HmconfWeb do
     pipe_through :auth
     pipe_through :browser
 
     live_dashboard "/dashboard",
-      metrics: NexusWeb.Telemetry,
+      metrics: HmconfWeb.Telemetry,
       additional_pages: [exwebrtc: ExWebRTCDashboard]
   end
 
   defp admin_auth(conn, _opts) do
-    username = Application.fetch_env!(:nexus, :admin_username)
-    password = Application.fetch_env!(:nexus, :admin_password)
+    username = Application.fetch_env!(:hmconf, :admin_username)
+    password = Application.fetch_env!(:hmconf, :admin_password)
     Plug.BasicAuth.basic_auth(conn, username: username, password: password)
   end
 end

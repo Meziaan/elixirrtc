@@ -1,4 +1,4 @@
-defmodule NexusWeb.Presence do
+defmodule HmconfWeb.Presence do
   @moduledoc """
   Provides presence tracking to channels and processes.
 
@@ -6,6 +6,6 @@ defmodule NexusWeb.Presence do
   docs for more details.
   """
   use Phoenix.Presence,
-    otp_app: :nexus,
-    pubsub_server: Nexus.PubSub
+    otp_app: :hmconf,
+    pubsub_server: Hmconf.PubSub
 end

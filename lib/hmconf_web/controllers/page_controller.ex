@@ -1,5 +1,5 @@
-defmodule NexusWeb.PageController do
-  use NexusWeb, :controller
+defmodule HmconfWeb.PageController do
+  use HmconfWeb, :controller
 
   def home(conn, _params) do
     render(conn, :home, page_title: "Lobby")

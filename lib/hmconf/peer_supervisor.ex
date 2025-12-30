@@ -1,11 +1,11 @@
-defmodule Nexus.PeerSupervisor do
+defmodule Hmconf.PeerSupervisor do
   @moduledoc false
 
   use DynamicSupervisor
 
   require Logger
 
-  alias Nexus.Peer
+  alias Hmconf.Peer
 
   @spec start_link(any()) :: DynamicSupervisor.on_start_child()
   def start_link(arg) do

@@ -1,9 +1,9 @@
-defmodule Nexus.MixProject do
+defmodule Hmconf.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :nexus,
+      app: :hmconf,
       version: "0.5.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -21,7 +21,7 @@ defmodule Nexus.MixProject do
 
   def application do
     [
-      mod: {Nexus.Application, []},
+      mod: {Hmconf.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -64,10 +64,10 @@ defmodule Nexus.MixProject do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["tailwind nexus", "esbuild nexus"],
+      "assets.build": ["tailwind hmconf", "esbuild hmconf"],
       "assets.deploy": [
-        "tailwind nexus --minify",
-        "esbuild nexus --minify",
+        "tailwind hmconf --minify",
+        "esbuild hmconf --minify",
         "phx.digest"
       ],
       "assets.format": &lint_and_format_assets/1,

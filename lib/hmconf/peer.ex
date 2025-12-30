@@ -1,4 +1,4 @@
-defmodule Nexus.Peer do
+defmodule Hmconf.Peer do
   @moduledoc false
 
   use GenServer
@@ -13,8 +13,8 @@ defmodule Nexus.Peer do
     SessionDescription
   }
 
-  alias Nexus.Rooms
-  alias NexusWeb.PeerChannel
+  alias Hmconf.Rooms
+  alias HmconfWeb.PeerChannel
 
   @type id :: String.t()
 
@@ -103,12 +103,12 @@ defmodule Nexus.Peer do
   end
 
   @spec registry_id(id()) :: term()
-  def registry_id(id), do: {:via, Registry, {Nexus.PeerRegistry, id}}
+  def registry_id(id), do: {:via, Registry, {Hmconf.PeerRegistry, id}}
 
   @impl true
   def init([room_id, id, channel, peer_ids]) do
     Logger.debug("Starting new peer #{id} in room #{room_id}")
-    ice_port_range = Application.fetch_env!(:nexus, :ice_port_range)
+    ice_port_range = Application.fetch_env!(:hmconf, :ice_port_range)
     pc_opts = @opts ++ [ice_port_range: ice_port_range]
 
     case PeerConnection.start_link(pc_opts) do

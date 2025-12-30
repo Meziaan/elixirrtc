@@ -1,17 +1,17 @@
-defmodule NexusWeb.Endpoint do
-  use Phoenix.Endpoint, otp_app: :nexus
+defmodule HmconfWeb.Endpoint do
+  use Phoenix.Endpoint, otp_app: :hmconf
 
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
-    key: "_nexus_key",
+    key: "_hmconf_key",
     signing_salt: "BnOeka5n",
     same_site: "Lax"
   ]
 
-  socket "/socket", NexusWeb.UserSocket,
+  socket "/socket", HmconfWeb.UserSocket,
     websocket: true,
     longpoll: false
 
@@ -25,9 +25,9 @@ defmodule NexusWeb.Endpoint do
   # when deploying your static files in production.
   plug Plug.Static,
     at: "/",
-    from: :nexus,
+    from: :hmconf,
     gzip: false,
-    only: NexusWeb.static_paths()
+    only: HmconfWeb.static_paths()
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
@@ -52,5 +52,5 @@ defmodule NexusWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
-  plug NexusWeb.Router
+  plug HmconfWeb.Router
 end

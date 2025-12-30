@@ -1,4 +1,4 @@
-defmodule NexusWeb.CoreComponents do
+defmodule HmconfWeb.CoreComponents do
   @moduledoc """
   Provides core UI components.
 
@@ -652,9 +652,9 @@ defmodule NexusWeb.CoreComponents do
     # uncommenting and adjusting the following code:
 
     # if count = opts[:count] do
-    #   Gettext.dngettext(NexusWeb.Gettext, "errors", msg, msg, count, opts)
+    #   Gettext.dngettext(HmconfWeb.Gettext, "errors", msg, msg, count, opts)
     # else
-    #   Gettext.dgettext(NexusWeb.Gettext, "errors", msg, opts)
+    #   Gettext.dgettext(HmconfWeb.Gettext, "errors", msg, opts)
     # end
 
     Enum.reduce(opts, msg, fn {key, value}, acc ->

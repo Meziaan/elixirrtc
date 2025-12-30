@@ -1,12 +1,12 @@
-defmodule Nexus.Room do
+defmodule Hmconf.Room do
   @moduledoc false
 
   use GenServer
 
   require Logger
 
-  alias Nexus.{Peer, PeerSupervisor}
-  alias NexusWeb.PeerChannel
+  alias Hmconf.{Peer, PeerSupervisor}
+  alias HmconfWeb.PeerChannel
 
   @peer_ready_timeout_s 10
   @peer_limit 32
@@ -17,7 +17,7 @@ defmodule Nexus.Room do
 
   @impl true
   def init(room_id) do
-    {:ok, _} = Registry.register(Nexus.RoomRegistry, room_id, self())
+    {:ok, _} = Registry.register(Hmconf.RoomRegistry, room_id, self())
 
     state = %{
       room_id: room_id,

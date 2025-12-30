@@ -1,12 +1,12 @@
-defmodule NexusWeb do
+defmodule HmconfWeb do
   @moduledoc """
   The entrypoint for defining your web interface, such
   as controllers, components, channels, and so on.
 
   This can be used in your application as:
 
-      use NexusWeb, :controller
-      use NexusWeb, :html
+      use HmconfWeb, :controller
+      use HmconfWeb, :html
 
   The definitions below will be executed for every controller,
   component, etc, so keep them short and clean, focused
@@ -40,7 +40,7 @@ defmodule NexusWeb do
     quote do
       use Phoenix.Controller,
         formats: [:html, :json],
-        layouts: [html: NexusWeb.Layouts]
+        layouts: [html: HmconfWeb.Layouts]
 
       import Plug.Conn
 
@@ -51,7 +51,7 @@ defmodule NexusWeb do
   def live_view do
     quote do
       use Phoenix.LiveView,
-        layout: {NexusWeb.Layouts, :app}
+        layout: {HmconfWeb.Layouts, :app}
 
       unquote(html_helpers())
     end
@@ -83,7 +83,7 @@ defmodule NexusWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components and translation
-      import NexusWeb.CoreComponents
+      import HmconfWeb.CoreComponents
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
@@ -96,9 +96,9 @@ defmodule NexusWeb do
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
-        endpoint: NexusWeb.Endpoint,
-        router: NexusWeb.Router,
-        statics: NexusWeb.static_paths()
+        endpoint: HmconfWeb.Endpoint,
+        router: HmconfWeb.Router,
+        statics: HmconfWeb.static_paths()
     end
   end
 

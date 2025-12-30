@@ -1,12 +1,12 @@
-defmodule NexusWeb.PeerChannel do
+defmodule HmconfWeb.PeerChannel do
   @moduledoc false
 
-  use NexusWeb, :channel
+  use HmconfWeb, :channel
 
   require Logger
 
-  alias Nexus.{Peer, Rooms}
-  alias NexusWeb.Presence
+  alias Hmconf.{Peer, Rooms}
+  alias HmconfWeb.Presence
 
   @spec send_offer(GenServer.server(), String.t()) :: :ok
   def send_offer(channel, offer) do

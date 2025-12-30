@@ -1,8 +1,8 @@
-defmodule NexusWeb.UserSocket do
+defmodule HmconfWeb.UserSocket do
   use Phoenix.Socket
 
-  channel "stream:*", NexusWeb.StreamChannel
-  channel "peer:*", NexusWeb.PeerChannel
+  channel "stream:*", HmconfWeb.StreamChannel
+  channel "peer:*", HmconfWeb.PeerChannel
 
   @impl true
   def connect(_params, socket, _connect_info) do

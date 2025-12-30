@@ -1,4 +1,4 @@
-defmodule Nexus.Room.Supervisor do
+defmodule Hmconf.Room.Supervisor do
   @moduledoc false
 
   use DynamicSupervisor
@@ -13,7 +13,7 @@ defmodule Nexus.Room.Supervisor do
   end
 
   def start_child(room_id) do
-    spec = {Nexus.Room, room_id}
+    spec = {Hmconf.Room, room_id}
     DynamicSupervisor.start_child(__MODULE__, spec)
   end
 end

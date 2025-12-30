@@ -1,9 +1,9 @@
-defmodule Nexus.Rooms do
+defmodule Hmconf.Rooms do
   @moduledoc """
   Public API for interacting with Rooms.
   """
 
-  alias Nexus.Room
+  alias Hmconf.Room
 
   def add_peer(room_id, channel_pid) do
     with {:ok, room_pid} <- find_or_start_room(room_id) do
@@ -48,12 +48,12 @@ defmodule Nexus.Rooms do
   end
 
   defp find_or_start_room(room_id) do
-    case Registry.lookup(Nexus.RoomRegistry, room_id) do
+    case Registry.lookup(Hmconf.RoomRegistry, room_id) do
       [{pid, _}] ->
         {:ok, pid}
 
       [] ->
-        case Nexus.Room.Supervisor.start_child(room_id) do
+        case Hmconf.Room.Supervisor.start_child(room_id) do
           {:ok, pid} -> {:ok, pid}
           {:ok, pid, _} -> {:ok, pid}
           error -> error

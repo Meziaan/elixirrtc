@@ -1,4 +1,4 @@
-defmodule Nexus.Application do
+defmodule Hmconf.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false
@@ -13,23 +13,23 @@ defmodule Nexus.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      NexusWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:nexus, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Nexus.PubSub},
-      # Start a worker by calling: Nexus.Worker.start_link(arg)
-      # {Nexus.Worker, arg},
+      HmconfWeb.Telemetry,
+      {DNSCluster, query: Application.get_env(:hmconf, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: Hmconf.PubSub},
+      # Start a worker by calling: Hmconf.Worker.start_link(arg)
+      # {Hmconf.Worker, arg},
       # Start to serve requests, typically the last entry
-      NexusWeb.Endpoint,
-      NexusWeb.Presence,
-      Nexus.PeerSupervisor,
-      {Registry, name: Nexus.PeerRegistry, keys: :unique},
-      {Registry, name: Nexus.RoomRegistry, keys: :unique},
-      Nexus.Room.Supervisor
+      HmconfWeb.Endpoint,
+      HmconfWeb.Presence,
+      Hmconf.PeerSupervisor,
+      {Registry, name: Hmconf.PeerRegistry, keys: :unique},
+      {Registry, name: Hmconf.RoomRegistry, keys: :unique},
+      Hmconf.Room.Supervisor
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Nexus.Supervisor]
+    opts = [strategy: :one_for_one, name: Hmconf.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
@@ -37,7 +37,7 @@ defmodule Nexus.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    NexusWeb.Endpoint.config_change(changed, removed)
+    HmconfWeb.Endpoint.config_change(changed, removed)
     :ok
   end
 end
