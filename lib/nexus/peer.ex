@@ -38,6 +38,7 @@ defmodule Nexus.Peer do
           id: id(),
           channel: pid(),
           pc: pid(),
+          participant: Nexus.Data.Participant.t(),
           # Tracks streamed from the browser to the peer
           inbound_tracks: tracks_spec(),
           # Tracks streamed from the peer to the browser
@@ -73,40 +74,40 @@ defmodule Nexus.Peer do
   ]
 
   @spec start_link(term(), term()) :: GenServer.on_start()
-  def start_link(args, opts) do
+def start_link(args, opts) do
     GenServer.start_link(__MODULE__, args, opts)
   end
 
   @spec apply_sdp_answer(id(), String.t()) :: :ok
-  def apply_sdp_answer(id, answer_sdp) do
+def apply_sdp_answer(id, answer_sdp) do
     GenServer.call(registry_id(id), {:apply_sdp_answer, answer_sdp})
   end
 
   @spec add_ice_candidate(id(), String.t()) :: :ok
-  def add_ice_candidate(id, body) do
+def add_ice_candidate(id, body) do
     GenServer.call(registry_id(id), {:add_ice_candidate, body})
   end
 
   @spec add_subscriber(id(), id(), peer_tracks_spec()) :: :ok
-  def add_subscriber(id, peer, peer_tracks_spec) do
+def add_subscriber(id, peer, peer_tracks_spec) do
     GenServer.cast(registry_id(id), {:add_subscriber, peer, peer_tracks_spec})
   end
 
   @spec request_keyframe(id()) :: :ok
-  def request_keyframe(id) do
+def request_keyframe(id) do
     GenServer.cast(registry_id(id), :request_keyframe)
   end
 
   @spec notify(id(), term()) :: :ok
-  def notify(id, msg) do
+def notify(id, msg) do
     GenServer.cast(registry_id(id), msg)
   end
 
   @spec registry_id(id()) :: term()
-  def registry_id(id), do: {:via, Registry, {Nexus.PeerRegistry, id}}
+def registry_id(id), do: {:via, Registry, {Nexus.PeerRegistry, id}}
 
   @impl true
-  def init([room_id, id, channel, peer_ids]) do
+def init([room_id, id, channel, peer_ids, participant]) do
     Logger.debug("Starting new peer #{id} in room #{room_id}")
     ice_port_range = Application.fetch_env!(:nexus, :ice_port_range)
     pc_opts = @opts ++ [ice_port_range: ice_port_range]
@@ -123,6 +124,7 @@ defmodule Nexus.Peer do
           id: id,
           channel: channel,
           pc: pc,
+          participant: participant,
           inbound_tracks: %{video: nil, audio: nil},
           outbound_tracks: %{},
           peer_tracks: %{},
@@ -138,7 +140,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_continue({:initial_offer, peer_ids}, %{pc: pc} = state) do
+def handle_continue({:initial_offer, peer_ids}, %{pc: pc} = state) do
     Logger.debug("Creating initial SDP offer for #{state.id}")
 
     outbound_tracks = setup_transceivers(pc, peer_ids)
@@ -153,7 +155,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_call({:apply_sdp_answer, answer_sdp}, _from, %{pc: pc} = state) do
+def handle_call({:apply_sdp_answer, answer_sdp}, _from, %{pc: pc} = state) do
     answer = %SessionDescription{type: :answer, sdp: answer_sdp}
     Logger.debug("Applying SDP answer for #{state.id}:\n#{answer.sdp}")
 
@@ -173,7 +175,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_call({:add_ice_candidate, body}, _from, %{pc: pc} = state) do
+def handle_call({:add_ice_candidate, body}, _from, %{pc: pc} = state) do
     case Jason.decode(body) do
       {:ok, decoded_body} ->
         candidate = ICECandidate.from_json(decoded_body)
@@ -191,7 +193,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_cast(:request_keyframe, %{pc: pc} = state) do
+def handle_cast(:request_keyframe, %{pc: pc} = state) do
     inbound_video_track_id = state.inbound_tracks.video
 
     unless is_nil(inbound_video_track_id) do
@@ -202,19 +204,19 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_cast({:add_subscriber, peer, spec}, state) do
+def handle_cast({:add_subscriber, peer, spec}, state) do
     Logger.debug("Peer #{state.id} received subscribe request from peer #{peer}")
 
     {:noreply, put_in(state.peer_tracks[peer], spec)}
   end
 
   @impl true
-  def handle_cast({:peer_added, id}, %{id: id} = state) do
+def handle_cast({:peer_added, id}, %{id: id} = state) do
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast({:peer_added, peer}, %{pc: pc} = state) do
+def handle_cast({:peer_added, peer}, %{pc: pc} = state) do
     if PeerConnection.get_signaling_state(pc) == :have_local_offer do
       Logger.debug("Peer #{state.id} scheduled adding of #{peer} after receiving SDP answer")
       pending_peers = MapSet.put(state.pending_peers, peer)
@@ -226,7 +228,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_cast({:peer_removed, peer}, %{pc: pc} = state) do
+def handle_cast({:peer_removed, peer}, %{pc: pc} = state) do
     if PeerConnection.get_signaling_state(pc) == :have_local_offer do
       Logger.debug("Peer #{state.id} scheduled removal of #{peer} after receiving SDP answer")
 
@@ -242,31 +244,19 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_info({:ex_webrtc, pc, {:ice_candidate, candidate}}, %{pc: pc} = state) do
-    case ICECandidate.to_json(candidate) do
-      json_candidate ->
-        case Jason.encode(json_candidate) do
-          {:ok, body} ->
-            case PeerChannel.send_candidate(state.channel, body) do
-              :ok ->
-                :noreply
-              {:error, reason} -> # Assuming PeerChannel.send_candidate could return error
-                Logger.warning("Failed to send ICE candidate to channel for peer #{state.id}: #{inspect(reason)}")
-                :noreply
-            end
-          {:error, reason} ->
-            Logger.warning("Failed to encode ICE candidate to JSON for peer #{state.id}: #{inspect(reason)}")
-            :noreply
-        end
-      _ -> # ICECandidate.to_json might not return a tuple, so handle other cases
-        Logger.warning("Failed to convert ICE candidate to JSON for peer #{state.id}")
-        :noreply
+def handle_info({:ex_webrtc, pc, {:ice_candidate, candidate}}, %{pc: pc} = state) do
+    json_candidate = ICECandidate.to_json(candidate)
+    case Jason.encode(json_candidate) do
+      {:ok, body} ->
+        PeerChannel.send_candidate(state.channel, body)
+      {:error, reason} ->
+        Logger.warning("Failed to encode ICE candidate to JSON for peer #{state.id}: #{inspect(reason)}")
     end
     {:noreply, state}
   end
 
   @impl true
-  def handle_info({:ex_webrtc, pc, {:connection_state_change, :connected}}, %{pc: pc} = state) do
+def handle_info({:ex_webrtc, pc, {:connection_state_change, :connected}}, %{pc: pc} = state) do
     Logger.debug("Peer #{state.id} connected")
     :ok = Rooms.mark_ready(state.room_id, state.id)
 
@@ -274,13 +264,13 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_info({:ex_webrtc, pc, {:connection_state_change, :failed}}, %{pc: pc} = state) do
+def handle_info({:ex_webrtc, pc, {:connection_state_change, :failed}}, %{pc: pc} = state) do
     Logger.warning("Stopping peer #{state.id} because ICE connection changed state to `failed`")
     {:stop, {:shutdown, :ice_connection_failed}, state}
   end
 
   @impl true
-  def handle_info({:ex_webrtc, pc, {:rtp, id, _rid, packet}}, %{pc: pc} = state) do
+def handle_info({:ex_webrtc, pc, {:rtp, id, _rid, packet}}, %{pc: pc} = state) do
     case state.inbound_tracks do
       %{video: ^id} -> broadcast_packet(state.peer_tracks, :video, packet)
       %{audio: ^id} -> broadcast_packet(state.peer_tracks, :audio, packet)
@@ -290,7 +280,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_info({:ex_webrtc, pc, {:rtcp, packets}}, %{pc: pc} = state) do
+def handle_info({:ex_webrtc, pc, {:rtcp, packets}}, %{pc: pc} = state) do
     Enum.each(packets, fn
       {track_id, %ExRTCP.Packet.PayloadFeedback.PLI{}} ->
         {peer_id, _} =
@@ -306,7 +296,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_info({:ex_webrtc, pc, {:track, track}}, %{pc: pc} = state) do
+def handle_info({:ex_webrtc, pc, {:track, track}}, %{pc: pc} = state) do
     Logger.debug("Peer #{state.id} added remote #{track.kind} track #{track.id}")
 
     state = put_in(state.inbound_tracks[track.kind], track.id)
@@ -315,7 +305,7 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pc, reason}, %{pc: pc} = state) do
+def handle_info({:DOWN, _ref, :process, pc, reason}, %{pc: pc} = state) do
     Logger.warning(
       "Peer #{state.id} shutting down: peer connection process #{inspect(pc)} terminated with reason #{inspect(reason)}"
     )
@@ -324,37 +314,9 @@ defmodule Nexus.Peer do
   end
 
   @impl true
-  def handle_info(msg, state) do
+def handle_info(msg, state) do
     Logger.debug("Ignoring unknown message: #{inspect(msg)}")
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast(:send_offer, %{pc: pc} = state) do
-    Logger.debug("Peer #{state.id} received request to send new offer.")
-
-    transceivers = PeerConnection.get_transceivers(pc)
-
-    # Spurious renegotiation requests from the client can cause a crash
-    # if they happen before the peer connection is fully established and
-    # codecs are negotiated for sender tracks. We guard against this by
-    # checking if there's at least one video track ready to send.
-    can_renegotiate? =
-      Enum.any?(transceivers, fn t ->
-        t.kind == :video and t.direction in [:sendonly, :sendrecv] and t.sender &&
-          !is_nil(t.sender.codec)
-      end)
-
-
-    if can_renegotiate? do
-      {:noreply, send_offer(state)}
-    else
-      Logger.warning(
-        "Skipping client-requested renegotiation for #{state.id} because no video transceiver is ready."
-      )
-
-      {:noreply, state}
-    end
   end
 
   defp setup_transceivers(pc, peer_ids) do
@@ -389,7 +351,7 @@ defmodule Nexus.Peer do
 
     transceivers = %{video: video_tr.id, audio: audio_tr.id}
 
-    %{
+    %{ 
       stream: stream_id,
       video: vt.id,
       audio: at.id,
@@ -419,7 +381,7 @@ defmodule Nexus.Peer do
   end
 
   defp subscribe_to_new_tracks(state) do
-    outbound_tracks =
+    outbound_tracks = 
       state.outbound_tracks
       |> Map.new(fn {peer, spec} ->
         unless spec.subscribed? do

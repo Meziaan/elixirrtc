@@ -46,7 +46,7 @@ config :nexus, Nexus.Repo,
   database: "nexus_dev",
   hostname: System.get_env("DB_HOSTNAME", "localhost"),
   username: System.get_env("DB_USERNAME", "postgres"),
-  password: System.get_env("DB_PASSWORD", "postgres"),
+  password: System.get_env("DB_PASSWORD", "mezan"),
   pool_size: 10,
   show_sensitive_data_on_connection_error: true
 

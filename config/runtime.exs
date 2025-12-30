@@ -71,6 +71,23 @@ if config_env() == :prod do
   admin_password =
     System.get_env("ADMIN_PASSWORD") || raise "Environment variable ADMIN_PASSWORD is missing."
 
+  # Configure your database
+  database_url =
+    System.get_env("DATABASE_URL") ||
+      raise """
+      environment variable DATABASE_URL is missing.
+      For example: ecto://USER:PASS@HOST/DATABASE
+      """
+
+  config :nexus, Nexus.Repo,
+    # SSL options can be given as a list of options
+    # Or as a string if using SSL with a database CA certificate
+    # ssl: ["/path/to/certificate.pem"],
+    # ssl: :verify_ca,
+    ssl: false,
+    url: database_url,
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+
   config :nexus,
     admin_username: admin_username,
     admin_password: admin_password

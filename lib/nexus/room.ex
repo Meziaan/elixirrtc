@@ -6,24 +6,23 @@ defmodule Nexus.Room do
   require Logger
 
   alias Nexus.Repo
-  alias Nexus.Data.Room
+  alias Nexus.Data.Participant
   alias Nexus.{Peer, PeerSupervisor}
   alias NexusWeb.PeerChannel
 
   @peer_ready_timeout_s 10
   @peer_limit 32
 
-  def start_link(room_data) do
-    GenServer.start_link(__MODULE__, room_data)
+  def start_link(room) do
+    GenServer.start_link(__MODULE__, room)
   end
 
   @impl true
-  def init(%{uuid: room_uuid, name: room_name}) do
-    {:ok, _} = Registry.register(Nexus.RoomRegistry, room_uuid, self())
+  def init(room) do
+    {:ok, _} = Registry.register(Nexus.RoomRegistry, room.id, self())
 
     state = %{
-      room_id: room_uuid,
-      room_name: room_name,
+      room_struct: room,
       peers: %{},
       pending_peers: %{},
       peer_pid_to_id: %{},
@@ -44,28 +43,31 @@ defmodule Nexus.Room do
 
   @impl true
   def handle_call({:add_peer, channel_pid}, _from, state) do
-    id = generate_id()
-    Logger.info("New peer #{id} added to room #{state.room_id}")
+    peer_id = generate_id()
+    Logger.info("New peer #{peer_id} added to room #{state.room_struct.name}")
     peer_ids = Map.keys(state.peers)
 
-    case PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids) do
+    changeset = Participant.changeset(%Participant{}, %{name: "Peer #{peer_id}", joined_at: DateTime.utc_now(), room_id: state.room_struct.id})
+    {:ok, participant} = Repo.insert(changeset)
+
+    case PeerSupervisor.add_peer(state.room_struct.id, peer_id, channel_pid, peer_ids, participant) do
       {:ok, pid} ->
         Process.monitor(pid)
 
-        peer_data = %{pid: pid, channel: channel_pid}
+        peer_data = %{pid: pid, channel: channel_pid, participant: participant}
 
         state =
           state
-          |> put_in([:pending_peers, id], peer_data)
-          |> put_in([:peer_pid_to_id, pid], id)
+          |> put_in([:pending_peers, peer_id], peer_data)
+          |> put_in([:peer_pid_to_id, pid], peer_id)
 
-        Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
+        Process.send_after(self(), {:peer_ready_timeout, peer_id}, @peer_ready_timeout_s * 1000)
 
-        reply = {:ok, id, state.shared_video, state.whiteboard_history, state.video_state}
+        reply = {:ok, peer_id, participant.id, state.room_struct, state.shared_video, state.whiteboard_history, state.video_state}
         {:reply, reply, state}
 
       {:error, reason} ->
-        Logger.error("Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}")
+        Logger.error("Failed to add peer #{peer_id} to room #{state.room_struct.name}: #{inspect(reason)}")
         {:reply, {:error, :peer_start_failed}, state}
     end
   end
@@ -146,6 +148,7 @@ defmodule Nexus.Room do
         is_map_key(state.pending_peers, id) ->
           {peer_data, state} = pop_in(state, [:pending_peers, id])
           :ok = PeerChannel.close(peer_data.channel)
+          update_participant_left_at(peer_data.participant)
 
           state
 
@@ -153,6 +156,7 @@ defmodule Nexus.Room do
           {peer_data, state} = pop_in(state, [:peers, id])
           :ok = PeerChannel.close(peer_data.channel)
           broadcast({:peer_removed, id}, state)
+          update_participant_left_at(peer_data.participant)
 
           state
       end
@@ -171,5 +175,10 @@ defmodule Nexus.Room do
     Map.keys(state.peers)
     |> Stream.concat(Map.keys(state.pending_peers))
     |> Enum.each(&Peer.notify(&1, msg))
+  end
+  
+  defp update_participant_left_at(participant) do
+    changeset = Participant.changeset(participant, %{left_at: DateTime.utc_now()})
+    Repo.update(changeset)
   end
 end
