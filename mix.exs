@@ -54,6 +54,10 @@ defmodule Hmconf.MixProject do
       {:bandit, "~> 1.2"},
       {:ex_webrtc, "~> 0.15.0"},
 
+      # Ecto
+      {:ecto_sql, "~> 3.10"},
+      {:postgrex, ">= 0.0.0"},
+
       # Dialyzer and credo
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}
