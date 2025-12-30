@@ -10,6 +10,12 @@ import Config
 config :hmconf,
   generators: [timestamp_type: :utc_datetime]
 
+config :hmconf, Hmconf.Repo,
+  migration_primary_key: [type: :binary_id],
+  pool_size: 10
+
+config :hmconf, ecto_repos: [Hmconf.Repo]
+
 # Configures the endpoint
 config :hmconf, HmconfWeb.Endpoint,
   url: [host: "localhost"],

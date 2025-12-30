@@ -14,6 +14,7 @@ defmodule Hmconf.Application do
   def start(_type, _args) do
     children = [
       HmconfWeb.Telemetry,
+      Hmconf.Repo, # Added this line
       {DNSCluster, query: Application.get_env(:hmconf, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Hmconf.PubSub},
       # Start a worker by calling: Hmconf.Worker.start_link(arg)
