@@ -50,7 +50,7 @@ defmodule Nexus.Room do
     changeset = Participant.changeset(%Participant{}, %{name: "Peer #{peer_id}", joined_at: DateTime.utc_now(), room_id: state.room_struct.id})
     {:ok, participant} = Repo.insert(changeset)
 
-    case PeerSupervisor.add_peer(state.room_struct.id, peer_id, channel_pid, peer_ids, participant) do
+    case PeerSupervisor.add_peer(state.room_struct.id, state.room_struct.name, peer_id, channel_pid, peer_ids, participant) do
       {:ok, pid} ->
         Process.monitor(pid)
 

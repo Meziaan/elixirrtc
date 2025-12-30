@@ -12,10 +12,10 @@ defmodule Nexus.PeerSupervisor do
     DynamicSupervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
 
-  @spec add_peer(String.t(), String.t(), pid(), [String.t()], Nexus.Data.Participant.t()) ::
+  @spec add_peer(String.t(), String.t(), String.t(), pid(), [String.t()], Nexus.Data.Participant.t()) ::
           {:ok, pid()}
-  def add_peer(room_id, id, channel_pid, peer_ids, participant) do
-    peer_opts = [room_id, id, channel_pid, peer_ids, participant]
+  def add_peer(room_id, room_name, id, channel_pid, peer_ids, participant) do
+    peer_opts = [room_id, room_name, id, channel_pid, peer_ids, participant]
     gen_server_opts = [name: Peer.registry_id(id)]
 
     child_spec = %{

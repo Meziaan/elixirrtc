@@ -56,10 +56,6 @@ defmodule Nexus.MixProject do
       {:ecto_sql, "~> 3.10"},
       {:postgrex, ">= 0.0.0"},
 
-      # Ash
-      {:ash, "~> 3.0"},
-      {:ash_postgres, "~> 1.3"},
-
       # Dialyzer and credo
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false}

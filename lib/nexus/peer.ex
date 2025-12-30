@@ -39,6 +39,7 @@ defmodule Nexus.Peer do
           channel: pid(),
           pc: pid(),
           participant: Nexus.Data.Participant.t(),
+          room_name: String.t(),
           # Tracks streamed from the browser to the peer
           inbound_tracks: tracks_spec(),
           # Tracks streamed from the peer to the browser
@@ -107,7 +108,7 @@ def notify(id, msg) do
 def registry_id(id), do: {:via, Registry, {Nexus.PeerRegistry, id}}
 
   @impl true
-def init([room_id, id, channel, peer_ids, participant]) do
+def init([room_id, room_name, id, channel, peer_ids, participant]) do
     Logger.debug("Starting new peer #{id} in room #{room_id}")
     ice_port_range = Application.fetch_env!(:nexus, :ice_port_range)
     pc_opts = @opts ++ [ice_port_range: ice_port_range]
@@ -121,6 +122,7 @@ def init([room_id, id, channel, peer_ids, participant]) do
 
         state = %{
           room_id: room_id,
+          room_name: room_name,
           id: id,
           channel: channel,
           pc: pc,
@@ -258,7 +260,7 @@ def handle_info({:ex_webrtc, pc, {:ice_candidate, candidate}}, %{pc: pc} = state
   @impl true
 def handle_info({:ex_webrtc, pc, {:connection_state_change, :connected}}, %{pc: pc} = state) do
     Logger.debug("Peer #{state.id} connected")
-    :ok = Rooms.mark_ready(state.room_id, state.id)
+    :ok = Rooms.mark_ready(state.room_name, state.id)
 
     {:noreply, state}
   end
