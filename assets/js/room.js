@@ -455,7 +455,14 @@ async function joinChannel(roomId, name) {
         
           if (!isSharer) {
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;';
+            overlay.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); color: white; font-size: 1.5rem; cursor: pointer;';
+            overlay.innerText = 'Click to play';
+            
+            overlay.addEventListener('click', () => {
+                youtubePlayer.playVideo();
+                overlay.style.display = 'none'; // Hide overlay after first play
+            }, { once: true });
+
             wrapper.appendChild(overlay);
           }
         
