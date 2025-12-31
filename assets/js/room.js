@@ -196,6 +196,10 @@ async function createPeerConnection() {
 
       videoPlayer.srcObject = event.streams[0];
 
+      videoPlayer.onloadedmetadata = () => {
+        videoPlayer.play().catch(e => console.error("Autoplay failed for remote stream:", e));
+      };
+
       if (activeSharing === 'screen' && remotePeerId === sharerId) {
         startPresentation(videoContainer);
       } else {
@@ -577,9 +581,10 @@ async function joinChannel(roomId, name) {
     });
 
     channel.on('screen_share_stopped', () => {
-      if (sharerId && peerVideoElements[sharerId]) {
-        peerVideoElements[sharerId].videoContainer.remove();
-        delete peerVideoElements[sharerId];
+      // Move the sharer's video from the main stage back to the video grid
+      const sharerVideoContainer = mainStage.firstChild;
+      if (sharerVideoContainer && sharerVideoContainer.id.startsWith('video-container-')) {
+        videoPlayerWrapper.appendChild(sharerVideoContainer);
       }
 
       sharerId = null;
