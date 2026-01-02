@@ -578,8 +578,10 @@ async function joinChannel(roomId, name) {
 
     channel.on('screen_share_stopped', () => {
       if (sharerId && peerVideoElements[sharerId]) {
-        peerVideoElements[sharerId].videoContainer.remove();
-        delete peerVideoElements[sharerId];
+        const sharerVideoContainer = peerVideoElements[sharerId].videoContainer;
+        if (mainStage.contains(sharerVideoContainer)) {
+          videoPlayerWrapper.appendChild(sharerVideoContainer);
+        }
       }
 
       sharerId = null;
