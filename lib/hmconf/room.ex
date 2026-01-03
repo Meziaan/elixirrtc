@@ -119,7 +119,6 @@ defmodule Hmconf.Room do
     {:reply, :ok, %{state | video_state: video_state}}
   end
 
-
   @impl true
   def handle_info({:peer_ready_timeout, peer}, state) do
     if is_map_key(state.pending_peers, peer) do

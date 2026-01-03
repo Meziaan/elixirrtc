@@ -1,9 +1,23 @@
-<div id="room" phx-hook="Room" data-room-id={@room_id} data-name={@name} class="h-full flex flex-col justify-center items-center gap-4 p-4">
-  <div id="join-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max_w-2xl" role="alert">
+<div
+  id="room"
+  phx-hook="Room"
+  data-room-id={@room_id}
+  data-name={@name}
+  class="h-full flex flex-col justify-center items-center gap-4 p-4"
+>
+  <div
+    id="join-error-message"
+    class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max_w-2xl"
+    role="alert"
+  >
     <strong class="font-bold">Error!</strong>
     <span class="block sm:inline"></span>
   </div>
-  <div id="join-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max-w-2xl" role="alert">
+  <div
+    id="join-error-message"
+    class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative w-full max-w-2xl"
+    role="alert"
+  >
     <strong class="font-bold">Error!</strong>
     <span class="block sm:inline"></span>
   </div>
@@ -13,18 +27,39 @@
         <div id="main-stage" class="flex-1 bg-black rounded-xl relative overflow-hidden">
           <!-- Shared video will be injected here -->
         </div>
-        <div id="filmstrip" class="w-full md:w-48 flex flex-row md:flex-col gap-2 overflow-y-auto"></div>
-      </div>
-      <div id="videoplayer-wrapper" class="w-full h-full grid gap-2 p-2 auto-rows-fr grid-cols-1 flex-grow">
-        <div id="video-container-local" class="relative">
-          <video id="videoplayer-local" class="rounded-xl w-full h-full object-cover" autoplay muted playsinline>
-          </video>
-          <div id="name-overlay-local" class="absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded"></div>
+        <div id="filmstrip" class="w-full md:w-48 flex flex-row md:flex-col gap-2 overflow-y-auto">
         </div>
       </div>
-      <div id="whiteboard-container" class="w-full h-full bg-white rounded-xl flex-col gap-2 hidden">
+      <div
+        id="videoplayer-wrapper"
+        class="w-full h-full grid gap-2 p-2 auto-rows-fr grid-cols-1 flex-grow"
+      >
+        <div id="video-container-local" class="relative">
+          <video
+            id="videoplayer-local"
+            class="rounded-xl w-full h-full object-cover"
+            autoplay
+            muted
+            playsinline
+          >
+          </video>
+          <div
+            id="name-overlay-local"
+            class="absolute bottom-2 left-2 bg-gray-800 bg-opacity-50 text-white px-2 py-1 rounded"
+          >
+          </div>
+        </div>
+      </div>
+      <div
+        id="whiteboard-container"
+        class="w-full h-full bg-white rounded-xl flex-col gap-2 hidden"
+      >
         <div id="whiteboard-controls" class="p-2 flex gap-2 items-center">
-          <button id="whiteboard-color-black" class="w-6 h-6 bg-black rounded-full border-2 border-gray-400"></button>
+          <button
+            id="whiteboard-color-black"
+            class="w-6 h-6 bg-black rounded-full border-2 border-gray-400"
+          >
+          </button>
           <button id="whiteboard-color-red" class="w-6 h-6 bg-red-500 rounded-full"></button>
           <button id="whiteboard-color-blue" class="w-6 h-6 bg-blue-500 rounded-full"></button>
           <button id="whiteboard-color-green" class="w-6 h-6 bg-green-500 rounded-full"></button>
@@ -38,9 +73,12 @@
         <canvas id="whiteboard-canvas" class="flex-1 w-full h-full"></canvas>
       </div>
     </div>
-
-    <!-- Chat Panel -->
-    <div id="chat-panel" class="fixed top-0 right-0 h-full w-full max-w-md bg-gray-100 rounded-l-xl flex flex-col transform translate-x-full transition-transform duration-300 ease-in-out md:static md:w-80 md:translate-x-0 md:rounded-xl">
+    
+<!-- Chat Panel -->
+    <div
+      id="chat-panel"
+      class="fixed top-0 right-0 h-full w-full max-w-md bg-gray-100 rounded-l-xl flex flex-col transform translate-x-full transition-transform duration-300 ease-in-out md:static md:w-80 md:translate-x-0 md:rounded-xl"
+    >
       <div class="p-4 border-b border-gray-200 flex justify-between items-center">
         <h2 class="text-lg font-semibold">Chat</h2>
         <button id="close-chat-panel" class="md:hidden">
@@ -52,18 +90,28 @@
       </div>
       <div class="p-4 border-t border-gray-200">
         <div class="relative">
-          <input type="text" id="chat-input" placeholder="Type a message..." class="w-full rounded-md border-gray-300 pr-10 shadow-sm focus:border-brand focus:ring-brand">
-          <button id="send-chat-message" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-brand">
-            <.icon name="hero-paper-airplane" class="h-5 w-5"/>
+          <input
+            type="text"
+            id="chat-input"
+            placeholder="Type a message..."
+            class="w-full rounded-md border-gray-300 pr-10 shadow-sm focus:border-brand focus:ring-brand"
+          />
+          <button
+            id="send-chat-message"
+            class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-brand"
+          >
+            <.icon name="hero-paper-airplane" class="h-5 w-5" />
           </button>
         </div>
       </div>
     </div>
-
   </div>
 
   <div id="controls" class="flex gap-4">
-    <button id="toggle-audio" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full">
+    <button
+      id="toggle-audio"
+      class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full"
+    >
       <span id="audio-on-icon">
         <.icon name="hero-microphone-solid" class="h-6 w-6" />
       </span>
@@ -71,7 +119,10 @@
         <.icon name="hero-speaker-x-mark-solid" class="h-6 w-6" />
       </span>
     </button>
-    <button id="toggle-video" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full">
+    <button
+      id="toggle-video"
+      class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full"
+    >
       <span id="video-on-icon">
         <.icon name="hero-video-camera-solid" class="h-6 w-6" />
       </span>
@@ -79,39 +130,79 @@
         <.icon name="hero-video-camera-slash-solid" class="h-6 w-6" />
       </span>
     </button>
-    <button id="leave-room" class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full">
+    <button
+      id="leave-room"
+      class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full"
+    >
       <.icon name="hero-phone-x-mark-solid" class="h-6 w-6" />
     </button>
-    <button id="copy-link" class="bg-zinc-500 hover:bg-zinc-600 text-white font-bold p-3 rounded-full" title="Copy invite link">
+    <button
+      id="copy-link"
+      class="bg-zinc-500 hover:bg-zinc-600 text-white font-bold p-3 rounded-full"
+      title="Copy invite link"
+    >
       <.icon name="hero-link-solid" class="h-6 w-6" />
     </button>
-    <button id="open-youtube-modal" phx-click={show_modal("youtube-share-modal")} class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Share YouTube Video">
+    <button
+      id="open-youtube-modal"
+      phx-click={show_modal("youtube-share-modal")}
+      class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block"
+      title="Share YouTube Video"
+    >
       <.icon name="hero-play-circle-solid" class="h-6 w-6" />
     </button>
-    <button id="toggle-screen-share" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Share Screen">
+    <button
+      id="toggle-screen-share"
+      class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block"
+      title="Share Screen"
+    >
       <.icon name="hero-computer-desktop-solid" class="h-6 w-6" />
     </button>
-    <button id="toggle-whiteboard" class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block" title="Start Whiteboard">
+    <button
+      id="toggle-whiteboard"
+      class="bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full hidden md:block"
+      title="Start Whiteboard"
+    >
       <.icon name="hero-paint-brush-solid" class="h-6 w-6" />
     </button>
-    <button id="stop-sharing-button" class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full hidden" title="Stop Sharing">
+    <button
+      id="stop-sharing-button"
+      class="bg-red-500 hover:bg-red-700 text-white font-bold p-3 rounded-full hidden"
+      title="Stop Sharing"
+    >
       <.icon name="hero-stop-circle-solid" class="h-6 w-6" />
     </button>
-
-    <!-- Toggle Chat Button -->
-    <button id="toggle-chat" class="relative bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full" title="Toggle Chat">
+    
+<!-- Toggle Chat Button -->
+    <button
+      id="toggle-chat"
+      class="relative bg-brand hover:bg-brand/80 text-white font-bold p-3 rounded-full"
+      title="Toggle Chat"
+    >
       <.icon name="hero-chat-bubble-left-right-solid" class="h-6 w-6" />
-      <span id="chat-notification-badge" class="absolute top-0 right-0 h-4 w-4 bg-red-500 text-white text-xs rounded-full hidden"></span>
+      <span
+        id="chat-notification-badge"
+        class="absolute top-0 right-0 h-4 w-4 bg-red-500 text-white text-xs rounded-full hidden"
+      >
+      </span>
     </button>
-
   </div>
 </div>
 
 <.modal id="youtube-share-modal">
   <h2 class="text-xl font-semibold mb-4">Share Video</h2>
   <div class="flex flex-col gap-4">
-    <input type="url" id="youtube-url-input" placeholder="Paste a video link (e.g., YouTube, .mp4)" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring-brand" />
-    <button id="share-youtube-video" phx-click={hide_modal("youtube-share-modal")} class="bg-brand hover:bg-brand/80 text-white font-bold py-2 px-4 rounded">
+    <input
+      type="url"
+      id="youtube-url-input"
+      placeholder="Paste a video link (e.g., YouTube, .mp4)"
+      class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring-brand"
+    />
+    <button
+      id="share-youtube-video"
+      phx-click={hide_modal("youtube-share-modal")}
+      class="bg-brand hover:bg-brand/80 text-white font-bold py-2 px-4 rounded"
+    >
       Share Video
     </button>
   </div>

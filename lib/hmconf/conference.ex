@@ -6,9 +6,11 @@ defmodule Hmconf.Conference do
   import Ecto.Query, warn: false
   alias Hmconf.Repo
 
-  alias Hmconf.Conference.Room
+  alias Ecto.Multi
   alias Hmconf.Conference.Participant
-  alias Hmconf.Conference.ChatMessage
+  alias Hmconf.Conference.Room
+  alias Hmconf.Conference.RoomMessage
+  alias Hmconf.Conference.SharedLink
 
   @doc """
   Returns the list of rooms.
@@ -18,23 +20,32 @@ defmodule Hmconf.Conference do
   end
 
   @doc """
-  Gets a single room.
+  Gets a single room by id or short_code.
 
   Raises `Ecto.NoResultsError` if the Room does not exist.
   """
-  def get_room!(id), do: Repo.get!(Room, id)
+  def get_room!(id_or_short_code) do
+    case Ecto.UUID.cast(id_or_short_code) do
+      :error ->
+        Repo.get_by!(Room, short_code: id_or_short_code)
+
+      {:ok, uuid} ->
+        Repo.get!(Room, uuid)
+    end
+  end
+
+  @doc """
+  Gets a single room with all its participants, messages and shared links.
+
+  Raises `Ecto.NoResultsError` if the Room does not exist.
+  """
+  def get_room_with_details!(id_or_short_code) do
+    room = get_room!(id_or_short_code)
+    Repo.preload(room, [:participants, :room_messages, :shared_links])
+  end
 
   @doc """
   Creates a room.
-
-  ## Examples
-
-      iex> create_room(%{name: "My Awesome Room"})
-      {:ok, %Room{}}
-
-      iex> create_room(%{name: "invalid name"})
-      {:error, %Ecto.Changeset{}}
-
   """
   def create_room(attrs \\ %{}) do
     %Room{}
@@ -44,15 +55,6 @@ defmodule Hmconf.Conference do
 
   @doc """
   Updates a room.
-
-  ## Examples
-
-      iex> update_room(room, %{name: "New Name"})
-      {:ok, %Room{}}
-
-      iex> update_room(room, %{name: "invalid name"})
-      {:error, %Ecto.Changeset{}}
-
   """
   def update_room(%Room{} = room, attrs) do
     room
@@ -62,12 +64,6 @@ defmodule Hmconf.Conference do
 
   @doc """
   Deletes a room.
-
-  ## Examples
-
-      iex> delete_room(room)
-      {:ok, %Room{}}
-
   """
   def delete_room(%Room{} = room) do
     Repo.delete(room)
@@ -81,10 +77,19 @@ defmodule Hmconf.Conference do
   end
 
   @doc """
-  Returns the list of participants.
+  Sets the `ended_at` timestamp for a room.
   """
-  def list_participants do
-    Repo.all(Participant)
+  def end_room(%Room{} = room) do
+    room
+    |> change_room(%{ended_at: DateTime.utc_now()})
+    |> Repo.update()
+  end
+
+  @doc """
+  Returns the list of participants for a given room.
+  """
+  def list_participants(%Room{} = room) do
+    Repo.all(from(p in Participant, where: p.room_id == ^room.id))
   end
 
   @doc """
@@ -95,12 +100,16 @@ defmodule Hmconf.Conference do
   def get_participant!(id), do: Repo.get!(Participant, id)
 
   @doc """
-  Creates a participant.
+  Creates a participant for a given room.
   """
-  def create_participant(attrs \\ %{}) do
-    %Participant{}
-    |> Participant.changeset(attrs)
-    |> Repo.insert()
+  def create_participant(%Room{} = room, attrs \\ %{}) do
+    Multi.new()
+    |> Multi.insert(:participant, Participant.changeset(%Participant{room_id: room.id}, attrs))
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{participant: participant}} -> {:ok, participant}
+      {:error, _, changeset, _} -> {:error, changeset}
+    end
   end
 
   @doc """
@@ -127,48 +136,84 @@ defmodule Hmconf.Conference do
   end
 
   @doc """
-  Returns the list of chat_messages.
+  Sets the `left_at` timestamp for a participant.
   """
-  def list_chat_messages do
-    Repo.all(ChatMessage)
-  end
-
-  @doc """
-  Gets a single chat_message.
-
-  Raises `Ecto.NoResultsError` if the ChatMessage does not exist.
-  """
-  def get_chat_message!(id), do: Repo.get!(ChatMessage, id)
-
-  @doc """
-  Creates a chat_message.
-  """
-  def create_chat_message(attrs \\ %{}) do
-    %ChatMessage{}
-    |> ChatMessage.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a chat_message.
-  """
-  def update_chat_message(%ChatMessage{} = chat_message, attrs) do
-    chat_message
-    |> ChatMessage.changeset(attrs)
+  def leave_participant(%Participant{} = participant) do
+    participant
+    |> change_participant(%{left_at: DateTime.utc_now()})
     |> Repo.update()
   end
 
   @doc """
-  Deletes a chat_message.
+  Returns the list of room_messages for a given room.
   """
-  def delete_chat_message(%ChatMessage{} = chat_message) do
-    Repo.delete(chat_message)
+  def list_messages(%Room{} = room) do
+    Repo.all(from(m in RoomMessage, where: m.room_id == ^room.id, order_by: [asc: :sent_at]))
   end
 
   @doc """
-  Returns an `%Ecto.Changeset{}` for tracking chat_message changes.
+  Gets a single room_message.
+
+  Raises `Ecto.NoResultsError` if the RoomMessage does not exist.
   """
-  def change_chat_message(%ChatMessage{} = chat_message, attrs \\ %{}) do
-    ChatMessage.changeset(chat_message, attrs)
+  def get_room_message!(id), do: Repo.get!(RoomMessage, id)
+
+  @doc """
+  Creates a room_message for a given room.
+  """
+  def create_message(%Room{} = room, attrs \\ %{}) do
+    Multi.new()
+    |> Multi.insert(
+      :room_message,
+      RoomMessage.changeset(%RoomMessage{room_id: room.id}, attrs)
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{room_message: room_message}} -> {:ok, room_message}
+      {:error, _, changeset, _} -> {:error, changeset}
+    end
+  end
+
+  @doc """
+  Updates a room_message.
+  """
+  def update_room_message(%RoomMessage{} = room_message, attrs) do
+    room_message
+    |> RoomMessage.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a room_message.
+  """
+  def delete_room_message(%RoomMessage{} = room_message) do
+    Repo.delete(room_message)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking room_message changes.
+  """
+  def change_room_message(%RoomMessage{} = room_message, attrs \\ %{}) do
+    RoomMessage.changeset(room_message, attrs)
+  end
+
+  @doc """
+  Returns the list of shared_links for a given room.
+  """
+  def list_shared_links(%Room{} = room) do
+    Repo.all(from(l in SharedLink, where: l.room_id == ^room.id, order_by: [asc: :shared_at]))
+  end
+
+  @doc """
+  Creates a shared_link for a given room.
+  """
+  def create_shared_link(%Room{} = room, attrs \\ %{}) do
+    Multi.new()
+    |> Multi.insert(:shared_link, SharedLink.changeset(%SharedLink{room_id: room.id}, attrs))
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{shared_link: shared_link}} -> {:ok, shared_link}
+      {:error, _, changeset, _} -> {:error, changeset}
+    end
   end
 end

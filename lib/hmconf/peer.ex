@@ -177,13 +177,16 @@ defmodule Hmconf.Peer do
     case Jason.decode(body) do
       {:ok, decoded_body} ->
         candidate = ICECandidate.from_json(decoded_body)
+
         case PeerConnection.add_ice_candidate(pc, candidate) do
           :ok ->
             {:reply, :ok, state}
+
           {:error, reason} ->
             Logger.warning("Unable to add ICE candidate for #{state.id}: #{inspect(reason)}")
             {:reply, {:error, reason}, state}
         end
+
       {:error, reason} ->
         Logger.warning("Failed to decode ICE candidate JSON for #{state.id}: #{inspect(reason)}")
         {:reply, {:error, :invalid_json}, state}
@@ -250,18 +253,30 @@ defmodule Hmconf.Peer do
             case PeerChannel.send_candidate(state.channel, body) do
               :ok ->
                 :noreply
-              {:error, reason} -> # Assuming PeerChannel.send_candidate could return error
-                Logger.warning("Failed to send ICE candidate to channel for peer #{state.id}: #{inspect(reason)}")
+
+              # Assuming PeerChannel.send_candidate could return error
+              {:error, reason} ->
+                Logger.warning(
+                  "Failed to send ICE candidate to channel for peer #{state.id}: #{inspect(reason)}"
+                )
+
                 :noreply
             end
+
           {:error, reason} ->
-            Logger.warning("Failed to encode ICE candidate to JSON for peer #{state.id}: #{inspect(reason)}")
+            Logger.warning(
+              "Failed to encode ICE candidate to JSON for peer #{state.id}: #{inspect(reason)}"
+            )
+
             :noreply
         end
-      _ -> # ICECandidate.to_json might not return a tuple, so handle other cases
+
+      # ICECandidate.to_json might not return a tuple, so handle other cases
+      _ ->
         Logger.warning("Failed to convert ICE candidate to JSON for peer #{state.id}")
         :noreply
     end
+
     {:noreply, state}
   end
 
@@ -341,10 +356,9 @@ defmodule Hmconf.Peer do
     # checking if there's at least one video track ready to send.
     can_renegotiate? =
       Enum.any?(transceivers, fn t ->
-        t.kind == :video and t.direction in [:sendonly, :sendrecv] and t.sender &&
+        (t.kind == :video and t.direction in [:sendonly, :sendrecv] and t.sender) &&
           !is_nil(t.sender.codec)
       end)
-
 
     if can_renegotiate? do
       {:noreply, send_offer(state)}
@@ -460,7 +474,8 @@ defmodule Hmconf.Peer do
     else
       {:error, reason} ->
         Logger.warning("Failed to send SDP offer for #{state.id}: #{inspect(reason)}")
-        state # Return original state, don't crash
+        # Return original state, don't crash
+        state
     end
   end
 

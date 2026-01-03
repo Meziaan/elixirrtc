@@ -3,7 +3,8 @@ import Config
 config :hmconf, Hmconf.Repo,
   adapter: Ecto.Adapters.Postgres,
   username: "postgres",
-  password: "mezan", # Using the same credentials for simplicity in test
+  # Using the same credentials for simplicity in test
+  password: "mezan",
   database: "hmconf_test",
   hostname: "localhost",
   pool: Ecto.Adapters.SQL.Sandbox
