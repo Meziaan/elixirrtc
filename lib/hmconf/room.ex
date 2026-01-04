@@ -5,7 +5,7 @@ defmodule Hmconf.Room do
 
   require Logger
 
-  alias Hmconf.{Peer, PeerSupervisor}
+  alias Hmconf.{Conference, Peer, PeerSupervisor} # Added Conference alias
   alias HmconfWeb.PeerChannel
 
   @peer_ready_timeout_s 10
@@ -13,6 +13,11 @@ defmodule Hmconf.Room do
 
   def start_link(room_id) do
     GenServer.start_link(__MODULE__, room_id)
+  end
+
+  # Public API for adding a peer
+  def add_peer(_room_id, channel_pid) do
+    GenServer.call(__MODULE__, {:add_peer, channel_pid})
   end
 
   @impl true
@@ -45,25 +50,36 @@ defmodule Hmconf.Room do
     Logger.info("New peer #{id} added to room #{state.room_id}")
     peer_ids = Map.keys(state.peers)
 
-    case PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids) do
-      {:ok, pid} ->
-        Process.monitor(pid)
+    # First, create the participant in the database
+    room = Conference.get_room!(state.room_id) # Assuming room always exists at this point
+    participant_attrs = %{joined_at: DateTime.utc_now()}
 
-        peer_data = %{pid: pid, channel: channel_pid}
+    case Conference.create_participant(room, participant_attrs) do
+      {:ok, participant} ->
+        case PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids) do
+          {:ok, pid} ->
+            Process.monitor(pid)
 
-        state =
-          state
-          |> put_in([:pending_peers, id], peer_data)
-          |> put_in([:peer_pid_to_id, pid], id)
+            peer_data = %{pid: pid, channel: channel_pid, participant: participant} # Store participant
 
-        Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
+            state =
+              state
+              |> put_in([:pending_peers, id], peer_data)
+              |> put_in([:peer_pid_to_id, pid], id)
 
-        reply = {:ok, id, state.shared_video, state.whiteboard_history, state.video_state}
-        {:reply, reply, state}
+            Process.send_after(self(), {:peer_ready_timeout, id}, @peer_ready_timeout_s * 1000)
 
-      {:error, reason} ->
-        Logger.error("Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}")
-        {:reply, {:error, :peer_start_failed}, state}
+            reply = {:ok, id, state.shared_video, state.whiteboard_history, state.video_state}
+            {:reply, reply, state}
+
+          {:error, reason} ->
+            Logger.error("Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}")
+            {:reply, {:error, :peer_start_failed}, state}
+        end
+
+      {:error, changeset} ->
+        Logger.error("Failed to create participant for room #{state.room_id}: #{inspect(changeset.errors)}")
+        {:reply, {:error, :participant_creation_failed}, state}
     end
   end
 
@@ -147,6 +163,13 @@ defmodule Hmconf.Room do
 
         is_map_key(state.peers, id) ->
           {peer_data, state} = pop_in(state, [:peers, id])
+          # Update participant's left_at timestamp
+          if participant = Map.get(peer_data, :participant) do
+            case Conference.leave_participant(participant) do
+              {:ok, _} -> Logger.info("Participant #{participant.id} left room #{state.room_id}")
+              {:error, changeset} -> Logger.error("Failed to update participant #{participant.id}: #{inspect(changeset.errors)}")
+            end
+          end
           :ok = PeerChannel.close(peer_data.channel)
           broadcast({:peer_removed, id}, state)
 

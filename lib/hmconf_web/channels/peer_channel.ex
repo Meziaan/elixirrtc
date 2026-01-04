@@ -5,7 +5,7 @@ defmodule HmconfWeb.PeerChannel do
 
   require Logger
 
-  alias Hmconf.{Peer, Rooms}
+  alias Hmconf.{Conference, Peer, Rooms}
   alias HmconfWeb.Presence
 
   @spec send_offer(GenServer.server(), String.t()) :: :ok

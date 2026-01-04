@@ -3,8 +3,6 @@ defmodule Hmconf.Rooms do
   Public API for interacting with Rooms.
   """
 
-  alias Hmconf.Room
-
   def add_peer(room_id, channel_pid) do
     with {:ok, room_pid} <- find_or_start_room(room_id) do
       GenServer.call(room_pid, {:add_peer, channel_pid})

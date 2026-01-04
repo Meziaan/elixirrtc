@@ -194,6 +194,13 @@ defmodule Hmconf.Peer do
   end
 
   @impl true
+  def handle_cast({:add_subscriber, peer, spec}, state) do
+    Logger.debug("Peer #{state.id} received subscribe request from peer #{peer}")
+
+    {:noreply, put_in(state.peer_tracks[peer], spec)}
+  end
+
+  @impl true
   def handle_cast(:request_keyframe, %{pc: pc} = state) do
     inbound_video_track_id = state.inbound_tracks.video
 
@@ -202,13 +209,6 @@ defmodule Hmconf.Peer do
     end
 
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast({:add_subscriber, peer, spec}, state) do
-    Logger.debug("Peer #{state.id} received subscribe request from peer #{peer}")
-
-    {:noreply, put_in(state.peer_tracks[peer], spec)}
   end
 
   @impl true
@@ -252,14 +252,6 @@ defmodule Hmconf.Peer do
           {:ok, body} ->
             case PeerChannel.send_candidate(state.channel, body) do
               :ok ->
-                :noreply
-
-              # Assuming PeerChannel.send_candidate could return error
-              {:error, reason} ->
-                Logger.warning(
-                  "Failed to send ICE candidate to channel for peer #{state.id}: #{inspect(reason)}"
-                )
-
                 :noreply
             end
 

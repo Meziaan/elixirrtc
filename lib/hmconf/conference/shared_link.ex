@@ -10,7 +10,6 @@ defmodule Hmconf.Conference.SharedLink do
 
   schema "shared_links" do
     field(:url, :string)
-    field(:shared_by_ip, :string)
     field(:shared_at, :utc_datetime)
 
     belongs_to(:room, Hmconf.Conference.Room)
@@ -21,7 +20,7 @@ defmodule Hmconf.Conference.SharedLink do
   @doc false
   def changeset(shared_link, attrs) do
     shared_link
-    |> cast(attrs, [:url, :shared_by_ip, :shared_at])
-    |> validate_required([:url, :shared_by_ip, :shared_at])
+    |> cast(attrs, [:url, :shared_at])
+    |> validate_required([:url, :shared_at])
   end
 end
