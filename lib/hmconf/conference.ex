@@ -35,6 +35,44 @@ defmodule Hmconf.Conference do
   end
 
   @doc """
+  Gets a single room by id or short_code.
+
+  Returns `nil` if the Room does not exist.
+  """
+  def get_room(id_or_short_code) do
+    case Ecto.UUID.cast(id_or_short_code) do
+      :error ->
+        Repo.get_by(Room, short_code: id_or_short_code)
+
+      {:ok, uuid} ->
+        Repo.get(Room, uuid)
+    end
+  end
+
+  @doc """
+  Gets a single room by id or short_code, creating it if it doesn't exist.
+  """
+  def get_or_create_room!(id_or_short_code) do
+    case get_room(id_or_short_code) do
+      nil ->
+        case create_room(%{
+               short_code: id_or_short_code,
+               name: id_or_short_code,
+               started_at: DateTime.utc_now()
+             }) do
+          {:ok, room} ->
+            room
+
+          {:error, changeset} ->
+            raise "Could not create room: #{inspect(changeset)}"
+        end
+
+      room ->
+        room
+    end
+  end
+
+  @doc """
   Gets a single room with all its participants, messages and shared links.
 
   Raises `Ecto.NoResultsError` if the Room does not exist.

@@ -1,11 +1,14 @@
 defmodule HmconfWeb.PageController do
   use HmconfWeb, :controller
 
+  alias Hmconf.Conference
+
   def home(conn, _params) do
     render(conn, :home, page_title: "Lobby")
   end
 
   def room(conn, %{"room_id" => room_id, "name" => name}) do
+    Conference.get_or_create_room!(room_id)
     render(conn, :room, room_id: room_id, name: name, page_title: "Room")
   end
 
