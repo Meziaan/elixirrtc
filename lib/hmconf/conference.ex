@@ -61,16 +61,39 @@ defmodule Hmconf.Conference do
   def get_or_create_room!(id_or_short_code) do
     case get_room(id_or_short_code) do
       {:error, :not_found} ->
-        case create_room(%{
-               short_code: id_or_short_code,
-               name: id_or_short_code,
-               started_at: DateTime.utc_now()
-             }) do
-          {:ok, room} ->
-            room
+        # if the id_or_short_code already contains the last 4 digits of a UUID, we don't want to add it again
+        if String.length(id_or_short_code) > 4 and
+             Regex.match?(~r/-[0-9a-f]{4}$/, id_or_short_code) do
+          # It's possible the user is trying to access a room that was created, but then the DB was wiped.
+          # In this case, we just create the room with the given short_code
+          case create_room(%{
+                 short_code: id_or_short_code,
+                 name: id_or_short_code,
+                 started_at: DateTime.utc_now()
+               }) do
+            {:ok, room} ->
+              room
 
-          {:error, changeset} ->
-            raise "Could not create room: #{inspect(changeset)}"
+            {:error, changeset} ->
+              raise "Could not create room: #{inspect(changeset)}"
+          end
+        else
+          new_id = Ecto.UUID.generate()
+          short_code_suffix = String.slice(new_id, -4, 4)
+          new_short_code = "#{id_or_short_code}-#{short_code_suffix}"
+
+          case create_room(%{
+                 id: new_id,
+                 short_code: new_short_code,
+                 name: id_or_short_code,
+                 started_at: DateTime.utc_now()
+               }) do
+            {:ok, room} ->
+              room
+
+            {:error, changeset} ->
+              raise "Could not create room: #{inspect(changeset)}"
+          end
         end
 
       {:ok, room} ->

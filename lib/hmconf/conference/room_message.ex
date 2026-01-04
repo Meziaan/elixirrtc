@@ -13,6 +13,7 @@ defmodule Hmconf.Conference.RoomMessage do
     field(:sent_at, :utc_datetime)
 
     belongs_to(:room, Hmconf.Conference.Room)
+    belongs_to(:participant, Hmconf.Conference.Participant)
 
     timestamps()
   end
@@ -20,7 +21,7 @@ defmodule Hmconf.Conference.RoomMessage do
   @doc false
   def changeset(room_message, attrs) do
     room_message
-    |> cast(attrs, [:content, :sent_at])
-    |> validate_required([:content, :sent_at])
+    |> cast(attrs, [:content, :sent_at, :participant_id])
+    |> validate_required([:content, :sent_at, :participant_id])
   end
 end

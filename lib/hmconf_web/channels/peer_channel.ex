@@ -38,13 +38,14 @@ defmodule HmconfWeb.PeerChannel do
   def join("peer:" <> room_id, %{"name" => name}, socket) do
     pid = self()
 
-    case Rooms.add_peer(room_id, pid) do
-      {:ok, id, shared_video, whiteboard_history, video_state} ->
+    case Rooms.add_peer(room_id, pid, name) do
+      {:ok, id, participant_id, shared_video, whiteboard_history, video_state} ->
         send(self(), {:after_join, shared_video, whiteboard_history, video_state})
 
         socket =
           socket
           |> assign(:peer, id)
+          |> assign(:participant_id, participant_id)
           |> assign(:name, name)
           |> assign(:room_id, room_id)
 
@@ -111,7 +112,7 @@ defmodule HmconfWeb.PeerChannel do
   end
 
   @impl true
-  def handle_in("share_direct_video", %{"url" => url}, socket) do
+  def handle_in("share__video", %{"url" => url}, socket) do
     Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
     room_id = socket.assigns.room_id

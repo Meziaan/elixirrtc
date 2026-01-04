@@ -9,6 +9,7 @@ defmodule Hmconf.Conference.Participant do
   @foreign_key_type :binary_id
 
   schema "room_participants" do
+    field(:name, :string)
     field(:joined_at, :utc_datetime)
     field(:left_at, :utc_datetime)
 
@@ -20,7 +21,7 @@ defmodule Hmconf.Conference.Participant do
   @doc false
   def changeset(participant, attrs) do
     participant
-    |> cast(attrs, [:joined_at, :left_at])
-    |> validate_required([:joined_at])
+    |> cast(attrs, [:name, :joined_at, :left_at])
+    |> validate_required([:name, :joined_at])
   end
 end
