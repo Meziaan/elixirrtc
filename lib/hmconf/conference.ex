@@ -37,15 +37,21 @@ defmodule Hmconf.Conference do
   @doc """
   Gets a single room by id or short_code.
 
-  Returns `nil` if the Room does not exist.
+  Returns `{:ok, room}` or `{:error, :not_found}`.
   """
   def get_room(id_or_short_code) do
-    case Ecto.UUID.cast(id_or_short_code) do
-      :error ->
-        Repo.get_by(Room, short_code: id_or_short_code)
+    room =
+      case Ecto.UUID.cast(id_or_short_code) do
+        :error ->
+          Repo.get_by(Room, short_code: id_or_short_code)
 
-      {:ok, uuid} ->
-        Repo.get(Room, uuid)
+        {:ok, uuid} ->
+          Repo.get(Room, uuid)
+      end
+
+    case room do
+      nil -> {:error, :not_found}
+      _ -> {:ok, room}
     end
   end
 
@@ -54,7 +60,7 @@ defmodule Hmconf.Conference do
   """
   def get_or_create_room!(id_or_short_code) do
     case get_room(id_or_short_code) do
-      nil ->
+      {:error, :not_found} ->
         case create_room(%{
                short_code: id_or_short_code,
                name: id_or_short_code,
@@ -67,7 +73,7 @@ defmodule Hmconf.Conference do
             raise "Could not create room: #{inspect(changeset)}"
         end
 
-      room ->
+      {:ok, room} ->
         room
     end
   end

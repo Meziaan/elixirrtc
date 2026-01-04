@@ -44,60 +44,113 @@ defmodule Hmconf.Room do
     {:reply, {:error, :peer_limit_reached}, state}
   end
 
-  @impl true
-  def handle_call({:add_peer, channel_pid}, _from, state) do
-    id = generate_id()
-    Logger.info("New peer #{id} added to room #{state.room_id}")
-    peer_ids = Map.keys(state.peers)
+    @impl true
 
-    # First, create the participant in the database
-    case Conference.get_room(state.room_id) do
-      nil ->
-        Logger.error("Room #{state.room_id} does not exist")
-        {:reply, {:error, :room_not_found}, state}
+    def handle_call({:add_peer, channel_pid}, _from, state) do
 
-      room ->
-        participant_attrs = %{joined_at: DateTime.utc_now()}
+      id = generate_id()
 
-        case Conference.create_participant(room, participant_attrs) do
-          {:ok, participant} ->
-            case PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids) do
-              {:ok, pid} ->
-                Process.monitor(pid)
+      Logger.info("New peer #{id} added to room #{state.room_id}")
 
-                peer_data = %{pid: pid, channel: channel_pid, participant: participant} # Store participant
+      peer_ids = Map.keys(state.peers)
 
-                state =
-                  state
-                  |> put_in([:pending_peers, id], peer_data)
-                  |> put_in([:peer_pid_to_id, pid], id)
+  
 
-                Process.send_after(
-                  self(),
-                  {:peer_ready_timeout, id},
-                  @peer_ready_timeout_s * 1000
-                )
+      # First, create the participant in the database
 
-                reply = {:ok, id, state.shared_video, state.whiteboard_history, state.video_state}
-                {:reply, reply, state}
+      case Conference.get_room(state.room_id) do
 
-              {:error, reason} ->
-                Logger.error(
-                  "Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}"
-                )
+        {:error, :not_found} ->
 
-                {:reply, {:error, :peer_start_failed}, state}
-            end
+          Logger.error("Room #{state.room_id} does not exist")
 
-          {:error, changeset} ->
-            Logger.error(
-              "Failed to create participant for room #{state.room_id}: #{inspect(changeset.errors)}"
-            )
+          {:reply, {:error, :room_not_found}, state}
 
-            {:reply, {:error, :participant_creation_failed}, state}
-        end
+  
+
+        {:ok, room} ->
+
+          participant_attrs = %{joined_at: DateTime.utc_now()}
+
+  
+
+          case Conference.create_participant(room, participant_attrs) do
+
+            {:ok, participant} ->
+
+              case PeerSupervisor.add_peer(state.room_id, id, channel_pid, peer_ids) do
+
+                {:ok, pid} ->
+
+                  Process.monitor(pid)
+
+  
+
+                  peer_data = %{pid: pid, channel: channel_pid, participant: participant} # Store participant
+
+  
+
+                  state =
+
+                    state
+
+                    |> put_in([:pending_peers, id], peer_data)
+
+                    |> put_in([:peer_pid_to_id, pid], id)
+
+  
+
+                  Process.send_after(
+
+                    self(),
+
+                    {:peer_ready_timeout, id},
+
+                    @peer_ready_timeout_s * 1000
+
+                  )
+
+  
+
+                  reply = {:ok, id, state.shared_video, state.whiteboard_history, state.video_state}
+
+                  {:reply, reply, state}
+
+  
+
+                {:error, reason} ->
+
+                  Logger.error(
+
+                    "Failed to add peer #{id} to room #{state.room_id}: #{inspect(reason)}"
+
+                  )
+
+  
+
+                  {:reply, {:error, :peer_start_failed}, state}
+
+              end
+
+  
+
+            {:error, changeset} ->
+
+              Logger.error(
+
+                "Failed to create participant for room #{state.room_id}: #{inspect(changeset.errors)}"
+
+              )
+
+  
+
+              {:reply, {:error, :participant_creation_failed}, state}
+
+          end
+
+      end
+
     end
-  end
 
   @impl true
   def handle_call({:mark_ready, id}, _from, state)
