@@ -182,6 +182,19 @@ defmodule Hmconf.Conference do
   @doc """
   Gets a single participant.
 
+  Returns `{:ok, participant}` or `{:error, :not_found}`.
+  """
+  def get_participant(id) do
+    participant = Repo.get(Participant, id)
+    case participant do
+      nil -> {:error, :not_found}
+      _ -> {:ok, participant}
+    end
+  end
+
+  @doc """
+  Gets a single participant.
+
   Raises `Ecto.NoResultsError` if the Participant does not exist.
   """
   def get_participant!(id), do: Repo.get!(Participant, id)
@@ -269,10 +282,38 @@ defmodule Hmconf.Conference do
     )
     |> Repo.transaction()
     |> case do
-      {:ok, %{room_message: room_message}} -> {:ok, room_message}
+      {:ok, %{room_message: room_message}} ->
+        with {:ok, participant} <- get_participant(room_message.participant_id),
+             {:ok, updated_room} <- update_room_transcript(room, room_message, participant) do
+          {:ok, room_message}
+        else
+          {:error, _reason} ->
+            Logger.error("Failed to update room transcript for room #{room.id} after message #{room_message.id}")
+            {:ok, room_message} # Return original success to not break message creation
+        end
+
       {:error, _, changeset, _} -> {:error, changeset}
     end
   end
+
+  # Helper to update the room's messages_transcript
+  defp update_room_transcript(%Room{} = room, %RoomMessage{} = message, %Participant{} = participant) do
+    transcript_entry = %{
+      sender_name: participant.name,
+      content: message.content, # Assuming message.content is already the structured message
+      timestamp: message.inserted_at
+    }
+
+    existing_entries = Map.get(room.messages_transcript, "entries", [])
+    updated_entries = existing_entries ++ [transcript_entry]
+    updated_transcript = Map.put(room.messages_transcript, "entries", updated_entries)
+
+
+    room
+    |> Room.changeset(%{messages_transcript: updated_transcript})
+    |> Repo.update()
+  end
+
 
   @doc """
   Updates a room_message.

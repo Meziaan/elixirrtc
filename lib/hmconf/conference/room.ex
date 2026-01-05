@@ -13,6 +13,7 @@ defmodule Hmconf.Conference.Room do
     field(:name, :string)
     field(:started_at, :utc_datetime)
     field(:ended_at, :utc_datetime)
+    field :messages_transcript, :map, default: %{}
 
     has_many(:participants, Hmconf.Conference.Participant)
     has_many(:room_messages, Hmconf.Conference.RoomMessage)
@@ -24,7 +25,7 @@ defmodule Hmconf.Conference.Room do
   @doc false
   def changeset(room, attrs) do
     room
-    |> cast(attrs, [:short_code, :name, :started_at, :ended_at])
+    |> cast(attrs, [:short_code, :name, :started_at, :ended_at, :messages_transcript])
     |> validate_required([:short_code, :name])
   end
 end
