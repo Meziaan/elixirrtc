@@ -58,7 +58,7 @@ defmodule Hmconf.Conference do
   @doc """
   Gets a single room by id or short_code, creating it if it doesn't exist.
   """
-  def get_or_create_room!(id_or_short_code) do
+  def find_or_create_room!(id_or_short_code) do
     case get_room(id_or_short_code) do
       {:error, :not_found} ->
         # if the id_or_short_code already contains the last 4 digits of a UUID, we don't want to add it again
@@ -100,6 +100,26 @@ defmodule Hmconf.Conference do
         room
     end
   end
+
+  def create_room!(name) do
+    new_id = Ecto.UUID.generate()
+    short_code_suffix = String.slice(new_id, -4, 4)
+    new_short_code = "#{name}-#{short_code_suffix}"
+
+    case create_room(%{
+           id: new_id,
+           short_code: new_short_code,
+           name: name,
+           started_at: DateTime.utc_now()
+         }) do
+      {:ok, room} ->
+        room
+
+      {:error, changeset} ->
+        raise "Could not create room: #{inspect(changeset)}"
+    end
+  end
+
 
   @doc """
   Gets a single room with all its participants, messages and shared links.

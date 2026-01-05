@@ -196,12 +196,14 @@ defmodule HmconfWeb.PeerChannel do
   @impl true
   def handle_in("new_message", %{"body" => body}, socket) do
     room_id = socket.assigns.room_id
+    participant_id = socket.assigns.participant_id
 
     # Save the message to the database
     with {:ok, room} <- Conference.get_room(room_id) do
       Conference.create_message(room, %{
         content: body,
-        sent_at: DateTime.utc_now()
+        sent_at: DateTime.utc_now(),
+        participant_id: participant_id
       })
     end
 

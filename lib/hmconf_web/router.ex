@@ -20,6 +20,7 @@ defmodule HmconfWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    post "/rooms", PageController, :create_room
     get "/:room_id", PageController, :room
   end
 
