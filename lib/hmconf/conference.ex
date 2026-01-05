@@ -239,6 +239,19 @@ defmodule Hmconf.Conference do
   end
 
   @doc """
+  Returns the list of room messages for a given room, with participant names.
+  """
+  def list_room_messages_with_participants(%Room{} = room) do
+    Repo.all(
+      from(m in RoomMessage,
+        where: m.room_id == ^room.id,
+        order_by: [asc: :sent_at],
+        preload: [participant: :name]
+      )
+    )
+  end
+
+  @doc """
   Gets a single room_message.
 
   Raises `Ecto.NoResultsError` if the RoomMessage does not exist.
