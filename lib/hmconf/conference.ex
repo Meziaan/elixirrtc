@@ -1,6 +1,6 @@
 defmodule Hmconf.Conference do
   @moduledoc """
-  The Conference context provides functions for managing rooms, participants, and chat messages.
+The Conference context provides functions for managing rooms, participants, and chat messages.
   """
 
   import Ecto.Query, warn: false
@@ -33,6 +33,93 @@ defmodule Hmconf.Conference do
         Repo.get!(Room, uuid)
     end
   end
+
+  @doc """
+  Gets a single room by id or short_code.
+
+  Returns `{:ok, room}` or `{:error, :not_found}`.
+  """
+  def get_room(id_or_short_code) do
+    room = 
+      case Ecto.UUID.cast(id_or_short_code) do
+        :error ->
+          Repo.get_by(Room, short_code: id_or_short_code)
+
+        {:ok, uuid} ->
+          Repo.get(Room, uuid)
+      end
+
+    case room do
+      nil -> {:error, :not_found}
+      _ -> {:ok, room}
+    end
+  end
+
+  @doc """
+  Gets a single room by id or short_code, creating it if it doesn't exist.
+  """
+  def find_or_create_room!(id_or_short_code) do
+    case get_room(id_or_short_code) do
+      {:error, :not_found} ->
+        # if the id_or_short_code already contains the last 4 digits of a UUID, we don't want to add it again
+        if String.length(id_or_short_code) > 4 and
+             Regex.match?(~r/-[0-9a-f]{4}$/, id_or_short_code) do
+          # It's possible the user is trying to access a room that was created, but then the DB was wiped.
+          # In this case, we just create the room with the given short_code
+          case create_room(%{
+                 short_code: id_or_short_code,
+                 name: id_or_short_code,
+                 started_at: DateTime.utc_now()
+               }) do
+            {:ok, room} ->
+              room
+
+            {:error, changeset} ->
+              raise "Could not create room: #{inspect(changeset)}"
+          end
+        else
+          new_id = Ecto.UUID.generate()
+          short_code_suffix = String.slice(new_id, -4, 4)
+          new_short_code = "#{id_or_short_code}-#{short_code_suffix}"
+
+          case create_room(%{
+                 id: new_id,
+                 short_code: new_short_code,
+                 name: id_or_short_code,
+                 started_at: DateTime.utc_now()
+               }) do
+            {:ok, room} ->
+              room
+
+            {:error, changeset} ->
+              raise "Could not create room: #{inspect(changeset)}"
+          end
+        end
+
+      {:ok, room} ->
+        room
+    end
+  end
+
+  def create_room!(name) do
+    new_id = Ecto.UUID.generate()
+    short_code_suffix = String.slice(new_id, -4, 4)
+    new_short_code = "#{name}-#{short_code_suffix}"
+
+    case create_room(%{
+           id: new_id,
+           short_code: new_short_code,
+           name: name,
+           started_at: DateTime.utc_now()
+         }) do
+      {:ok, room} ->
+        room
+
+      {:error, changeset} ->
+        raise "Could not create room: #{inspect(changeset)}"
+    end
+  end
+
 
   @doc """
   Gets a single room with all its participants, messages and shared links.

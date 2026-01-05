@@ -38,13 +38,14 @@ defmodule HmconfWeb.PeerChannel do
   def join("peer:" <> room_id, %{"name" => name}, socket) do
     pid = self()
 
-    case Rooms.add_peer(room_id, pid) do
-      {:ok, id, shared_video, whiteboard_history, video_state} ->
+    case Rooms.add_peer(room_id, pid, name) do
+      {:ok, id, participant_id, shared_video, whiteboard_history, video_state} ->
         send(self(), {:after_join, shared_video, whiteboard_history, video_state})
 
         socket =
           socket
           |> assign(:peer, id)
+          |> assign(:participant_id, participant_id)
           |> assign(:name, name)
           |> assign(:room_id, room_id)
 
@@ -84,8 +85,17 @@ defmodule HmconfWeb.PeerChannel do
   def handle_in("share_youtube_video", %{"video_id" => video_id}, socket) do
     Logger.info("Shared YouTube video: #{video_id} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
+    room_id = socket.assigns.room_id
 
-    Rooms.set_shared_video(socket.assigns.room_id, %{
+    # Save the shared link to the database
+    with {:ok, room} <- Conference.get_room(room_id) do
+      Conference.create_shared_link(room, %{
+        url: "https://www.youtube.com/watch?v=#{video_id}",
+        shared_at: DateTime.utc_now()
+      })
+    end
+
+    Rooms.set_shared_video(room_id, %{
       type: :youtube,
       id: video_id,
       sender: socket.assigns.name,
@@ -102,11 +112,17 @@ defmodule HmconfWeb.PeerChannel do
   end
 
   @impl true
-  def handle_in("share_direct_video", %{"url" => url}, socket) do
+  def handle_in("share__video", %{"url" => url}, socket) do
     Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
+    room_id = socket.assigns.room_id
 
-    Rooms.set_shared_video(socket.assigns.room_id, %{
+    # Save the shared link to the database
+    with {:ok, room} <- Conference.get_room(room_id) do
+      Conference.create_shared_link(room, %{url: url, shared_at: DateTime.utc_now()})
+    end
+
+    Rooms.set_shared_video(room_id, %{
       type: :direct,
       url: url,
       sender: socket.assigns.name,
@@ -124,6 +140,7 @@ defmodule HmconfWeb.PeerChannel do
 
   def handle_in("share_heales_video", %{"url" => url}, socket) do
     Logger.info("Sharing Heales video: #{url} by #{socket.assigns.name}")
+    room_id = socket.assigns.room_id
 
     try do
       uri = URI.parse(url)
@@ -140,7 +157,15 @@ defmodule HmconfWeb.PeerChannel do
 
           sharer_id = socket.assigns.peer
 
-          Rooms.set_shared_video(socket.assigns.room_id, %{
+          # Save the shared link to the database
+          with {:ok, room} <- Conference.get_room(room_id) do
+            Conference.create_shared_link(room, %{
+              url: video_url,
+              shared_at: DateTime.utc_now()
+            })
+          end
+
+          Rooms.set_shared_video(room_id, %{
             type: :direct,
             url: video_url,
             sender: socket.assigns.name,
@@ -170,6 +195,18 @@ defmodule HmconfWeb.PeerChannel do
 
   @impl true
   def handle_in("new_message", %{"body" => body}, socket) do
+    room_id = socket.assigns.room_id
+    participant_id = socket.assigns.participant_id
+
+    # Save the message to the database
+    with {:ok, room} <- Conference.get_room(room_id) do
+      Conference.create_message(room, %{
+        content: body,
+        sent_at: DateTime.utc_now(),
+        participant_id: participant_id
+      })
+    end
+
     broadcast!(socket, "new_message", %{
       name: socket.assigns.name,
       body: body,
