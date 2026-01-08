@@ -8,7 +8,7 @@ defmodule HmconfWeb.PageController do
   end
 
   def create_room(conn, %{"room_id" => room_id, "name" => name}) do
-    room = Conference.create_room!(room_id)
+    room = Conference.find_or_create_room!(room_id)
     redirect(conn, to: ~p"/#{room.short_code}?name=#{name}")
   end
 
