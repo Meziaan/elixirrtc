@@ -353,8 +353,38 @@ defmodule Hmconf.Conference do
     |> Multi.insert(:shared_link, SharedLink.changeset(%SharedLink{room_id: room.id}, attrs))
     |> Repo.transaction()
     |> case do
-      {:ok, %{shared_link: shared_link}} -> {:ok, shared_link}
-      {:error, _, changeset, _} -> {:error, changeset}
+      {:ok, %{shared_link: shared_link}} ->
+        with {:ok, participant} <- get_participant(shared_link.participant_id),
+             {:ok, _updated_room} <-
+               update_transcript_for_shared_link(room, shared_link, participant) do
+          {:ok, shared_link}
+        else
+          {:error, _reason} ->
+            Logger.error(
+              "Failed to update room transcript for room #{room.id} after link share #{shared_link.id}"
+            )
+
+            {:ok, shared_link}
+        end
+
+      {:error, _, changeset, _} ->
+        {:error, changeset}
     end
+  end
+
+  defp update_transcript_for_shared_link(%Room{} = room, %SharedLink{} = link, %Participant{} = participant) do
+    transcript_entry = %{
+      sender_name: participant.name,
+      url: link.url,
+      timestamp: link.inserted_at
+    }
+
+    existing_entries = Map.get(room.shared_links_transcript, "entries", [])
+    updated_entries = existing_entries ++ [transcript_entry]
+    updated_transcript = Map.put(room.shared_links_transcript, "entries", updated_entries)
+
+    room
+    |> Room.changeset(%{shared_links_transcript: updated_transcript})
+    |> Repo.update()
   end
 end

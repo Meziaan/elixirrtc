@@ -86,12 +86,14 @@ defmodule HmconfWeb.PeerChannel do
     Logger.info("Shared YouTube video: #{video_id} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
     room_id = socket.assigns.room_id
+    participant_id = socket.assigns.participant_id
 
     # Save the shared link to the database
     with {:ok, room} <- Conference.get_room(room_id) do
       Conference.create_shared_link(room, %{
         url: "https://www.youtube.com/watch?v=#{video_id}",
-        shared_at: DateTime.utc_now()
+        shared_at: DateTime.utc_now(),
+        participant_id: participant_id
       })
     end
 
@@ -116,10 +118,15 @@ defmodule HmconfWeb.PeerChannel do
     Logger.info("Shared direct video: #{url} by #{socket.assigns.name}")
     sharer_id = socket.assigns.peer
     room_id = socket.assigns.room_id
+    participant_id = socket.assigns.participant_id
 
     # Save the shared link to the database
     with {:ok, room} <- Conference.get_room(room_id) do
-      Conference.create_shared_link(room, %{url: url, shared_at: DateTime.utc_now()})
+      Conference.create_shared_link(room, %{
+        url: url,
+        shared_at: DateTime.utc_now(),
+        participant_id: participant_id
+      })
     end
 
     Rooms.set_shared_video(room_id, %{
@@ -141,6 +148,7 @@ defmodule HmconfWeb.PeerChannel do
   def handle_in("share_heales_video", %{"url" => url}, socket) do
     Logger.info("Sharing Heales video: #{url} by #{socket.assigns.name}")
     room_id = socket.assigns.room_id
+    participant_id = socket.assigns.participant_id
 
     try do
       uri = URI.parse(url)
@@ -161,7 +169,8 @@ defmodule HmconfWeb.PeerChannel do
           with {:ok, room} <- Conference.get_room(room_id) do
             Conference.create_shared_link(room, %{
               url: video_url,
-              shared_at: DateTime.utc_now()
+              shared_at: DateTime.utc_now(),
+              participant_id: participant_id
             })
           end
 
