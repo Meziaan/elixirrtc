@@ -53,6 +53,7 @@ defmodule Hmconf.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.2"},
       {:ex_webrtc, "~> 0.15.0"},
+      {:logger_file_backend, "~> 0.0.13"},
 
       # Ecto
       {:ecto_sql, "~> 3.10"},

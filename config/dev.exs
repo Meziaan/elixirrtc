@@ -3,7 +3,7 @@ import Config
 config :hmconf, Hmconf.Repo,
   adapter: Ecto.Adapters.Postgres,
   username: "postgres",
-  password: "postgres",
+  password: "mezan",
   database: "hmconf_dev",
   hostname: "localhost",
   show_sensitive_data_on_connection_error: true,
