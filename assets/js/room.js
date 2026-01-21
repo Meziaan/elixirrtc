@@ -635,23 +635,8 @@ async function joinChannel(roomId, name) {
 function updateVideoGrid() {
   if (presentationLayout.classList.contains('hidden')) {
     const videoCount = videoPlayerWrapper.children.length;
-    let columns;
-
     if (videoCount > 0) {
-      if (videoCount === 1) {
-        columns = 1;
-      } else if (videoCount === 2) {
-        columns = 2;
-      } else if (videoCount <= 4) {
-        columns = 2;
-      } else if (videoCount <= 6) {
-        columns = 3;
-      } else if (videoCount <= 9) {
-        columns = 3;
-      } else {
-        columns = 4;
-      }
-      videoPlayerWrapper.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+      videoPlayerWrapper.style.gridTemplateColumns = `repeat(${videoCount}, 1fr)`;
     }
   }
 }
