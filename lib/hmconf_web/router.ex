@@ -16,7 +16,7 @@ defmodule HmconfWeb.Router do
     plug :admin_auth
   end
 
-  scope "/", HmconfWeb do
+  scope "/hmconf", HmconfWeb do
     pipe_through :browser
 
     get "/", PageController, :home
@@ -24,7 +24,7 @@ defmodule HmconfWeb.Router do
     get "/:room_id", PageController, :room
   end
 
-  scope "/admin", HmconfWeb do
+  scope "/hmconf/admin", HmconfWeb do
     pipe_through :auth
     pipe_through :browser
 

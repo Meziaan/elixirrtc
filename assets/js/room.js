@@ -281,7 +281,7 @@ function setupPreview() {
 }
 
 async function joinChannel(roomId, name) {
-  const socket = new Socket('/socket');
+  const socket = new Socket('/hmconf/socket');
   socket.connect();
 
   socket.onOpen(() => {
@@ -686,7 +686,7 @@ export const Room = {
       channel.leave();
       if(pc) pc.close();
       if(localStream) localStream.getTracks().forEach((track) => track.stop());
-      window.location.href = '/';
+      window.location.href = '/hmconf';
     });
 
     const copyLinkButton = document.getElementById('copy-link');
