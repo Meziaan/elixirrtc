@@ -256,7 +256,7 @@ defmodule HmconfWeb.PeerChannel do
   def handle_in("screen_share_started", %{"sharer_id" => sharer_id}, socket) do
     Logger.info("Screen share started by #{sharer_id} in room #{socket.assigns.room_id}")
     Rooms.set_shared_video(socket.assigns.room_id, %{type: :screen_share, sharer_id: sharer_id})
-    broadcast!(socket, "screen_share_started", %{sharer_id: sharer_id})
+    broadcast!(socket, "screen_share_started", %{sharer_id: sharer_id, sharer_name: socket.assigns.name})
     {:noreply, socket}
   end
 
@@ -273,7 +273,7 @@ defmodule HmconfWeb.PeerChannel do
     sharer_id = socket.assigns.peer
     Logger.info("Whiteboard started by #{sharer_id} in room #{socket.assigns.room_id}")
     Rooms.set_shared_video(socket.assigns.room_id, %{type: :whiteboard, sharer_id: sharer_id})
-    broadcast!(socket, "whiteboard_started", %{sharer_id: sharer_id})
+    broadcast!(socket, "whiteboard_started", %{sharer_id: sharer_id, sharer_name: socket.assigns.name})
     {:noreply, socket}
   end
 

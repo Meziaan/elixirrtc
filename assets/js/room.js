@@ -53,6 +53,7 @@ let localScreenShareVideoElement = null; // To hold the local screen share video
 let sharedVideo = {player: null, hls: null};
 let whiteboard = null;
 let activeSharing = null;
+let sharerName = null;
 
 function showError(message) {
   const errorNode = document.getElementById('join-error-message');
@@ -436,6 +437,8 @@ async function joinChannel(roomId, name) {
     
         channel.on('youtube_video_shared', (payload) => {
           sharerId = payload.sharer_id;
+          sharerName = payload.sender || 'Someone';
+          activeSharing = 'youtube';
           const videoId = payload.video_id;
         
           const wrapper = document.createElement('div');
@@ -493,6 +496,8 @@ async function joinChannel(roomId, name) {
           });
         
           document.getElementById('open-youtube-modal').classList.add('hidden');
+          document.getElementById('toggle-whiteboard').classList.add('hidden');
+          document.getElementById('toggle-screen-share').classList.add('hidden');
           if (isSharer) {
             document.getElementById('stop-sharing-button').classList.remove('hidden');
           }
@@ -506,6 +511,8 @@ async function joinChannel(roomId, name) {
 
     channel.on('new_direct_video', (payload) => {
       sharerId = payload.sharer_id;
+      sharerName = payload.sender || 'Someone';
+      activeSharing = 'direct';
       const isSharer = peerId === sharerId;
 
       const url = payload.url;
@@ -540,6 +547,8 @@ async function joinChannel(roomId, name) {
       }
 
       document.getElementById('open-youtube-modal').classList.add('hidden');
+      document.getElementById('toggle-whiteboard').classList.add('hidden');
+      document.getElementById('toggle-screen-share').classList.add('hidden');
       if (isSharer) {
         document.getElementById('stop-sharing-button').classList.remove('hidden');
       }
@@ -562,17 +571,28 @@ async function joinChannel(roomId, name) {
       }
       sharedVideo = {player: null, hls: null};
       sharerId = null;
+      sharerName = null;
+      activeSharing = null;
       document.getElementById('open-youtube-modal').classList.remove('hidden');
+      document.getElementById('toggle-whiteboard').classList.remove('hidden');
+      document.getElementById('toggle-screen-share').classList.remove('hidden');
       document.getElementById('stop-sharing-button').classList.add('hidden');
     });
 
     channel.on('screen_share_started', (payload) => {
       sharerId = payload.sharer_id;
+      sharerName = payload.sharer_name || 'Someone';
       activeSharing = 'screen';
 
       const screenShareVideoContainer = peerVideoElements[sharerId]?.videoContainer;
       if (screenShareVideoContainer) {
         startPresentation(screenShareVideoContainer);
+      }
+
+      if (peerId !== sharerId) {
+        document.getElementById('toggle-whiteboard').classList.add('hidden');
+        document.getElementById('toggle-screen-share').classList.add('hidden');
+        document.getElementById('open-youtube-modal').classList.add('hidden');
       }
     });
 
@@ -585,12 +605,18 @@ async function joinChannel(roomId, name) {
       }
 
       sharerId = null;
+      sharerName = null;
       activeSharing = null;
       stopPresentation();
+
+      document.getElementById('toggle-whiteboard').classList.remove('hidden');
+      document.getElementById('toggle-screen-share').classList.remove('hidden');
+      document.getElementById('open-youtube-modal').classList.remove('hidden');
     });
 
     channel.on('whiteboard_started', (payload) => {
       sharerId = payload.sharer_id;
+      sharerName = payload.sharer_name || 'Someone';
       activeSharing = 'whiteboard';
       
       startPresentation(whiteboardContainer);
@@ -611,6 +637,7 @@ async function joinChannel(roomId, name) {
 
     channel.on('whiteboard_stopped', () => {
       sharerId = null;
+      sharerName = null;
       activeSharing = null;
       whiteboard.destroy();
       stopPresentation();
@@ -829,6 +856,12 @@ function handleChatVisibility() {
     const stopSharingButton = document.getElementById('stop-sharing-button');
 
     shareVideoButton.addEventListener('click', () => {
+      if (sharerId !== null) {
+        const name = sharerName || presences[sharerId]?.name || 'Someone';
+        alert(`${name} is currently presenting.`);
+        return;
+      }
+
       const url = youtubeUrlInput.value;
       const youtubeVideoId = extractYoutubeVideoId(url);
 
@@ -882,7 +915,8 @@ function handleChatVisibility() {
 
   startWhiteboard() {
     if (sharerId && sharerId !== peerId) {
-      alert('Another user is already presenting.');
+      const name = sharerName || presences[sharerId]?.name || 'Someone';
+      alert(`${name} is currently presenting.`);
       return;
     }
     activeSharing = 'whiteboard';
@@ -896,7 +930,8 @@ function handleChatVisibility() {
 
   async startScreenShare() {
     if (sharerId !== null) {
-      alert('Another user is already presenting. Please wait for them to finish.');
+      const name = sharerName || presences[sharerId]?.name || 'Someone';
+      alert(`${name} is currently presenting.`);
       return;
     }
     if (this.isScreenSharing) return;
@@ -949,6 +984,7 @@ function handleChatVisibility() {
 
     document.getElementById('open-youtube-modal').classList.add('hidden');
     document.getElementById('toggle-screen-share').classList.add('hidden');
+    document.getElementById('toggle-whiteboard').classList.add('hidden');
     document.getElementById('stop-sharing-button').classList.remove('hidden');
 
     screenTrack.onended = () => {
@@ -984,6 +1020,7 @@ function handleChatVisibility() {
 
     document.getElementById('open-youtube-modal').classList.remove('hidden');
     document.getElementById('toggle-screen-share').classList.remove('hidden');
+    document.getElementById('toggle-whiteboard').classList.remove('hidden');
     document.getElementById('stop-sharing-button').classList.add('hidden');
   }
 };
